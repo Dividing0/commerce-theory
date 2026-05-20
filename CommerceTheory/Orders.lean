@@ -1,6 +1,6 @@
-import WebshopTheory.Pricing
+import CommerceTheory.Pricing
 
-namespace WebShopTheoryComplete
+namespace CommerceTheory
 
 /-! ## 4. Orders, payments, refunds, typestate, and status machines -/
 
@@ -11,7 +11,7 @@ type itself. That lets functions such as `capturePayment` accept only authorized
 payments and return only captured payments.
 -/
 
-/-- Closed set of cases for `OrderStatus` in the webshop domain model. -/
+/-- Closed set of cases for `OrderStatus` in the commerce domain model. -/
 inductive OrderStatus where
   | New
   | Paid
@@ -84,7 +84,7 @@ structure CapturedPayment where
   amount : Money
   currency : Currency
 
-/-- Closed set of cases for `PaymentState` in the webshop domain model. -/
+/-- Closed set of cases for `PaymentState` in the commerce domain model. -/
 inductive PaymentState where
   | Created
   | Authorized
@@ -167,4 +167,4 @@ theorem issueRefund_preserves_safety
   exact (issueRefund ledger amount h).refunded_le_captured
 
 
-end WebShopTheoryComplete
+end CommerceTheory

@@ -1,6 +1,6 @@
-name = "webshop-theory"
+name = "commerce-theory"
 version = "0.1.0"
-defaultTargets = ["webshop-theory"]
+defaultTargets = ["commerce-theory"]
 
 [[require]]
 name = "mathlib"
@@ -8,8 +8,8 @@ scope = "leanprover-community"
 rev = "v4.29.1"
 
 [[lean_lib]]
-name = "WebshopTheory"
+name = "CommerceTheory"
 
 [[lean_exe]]
-name = "webshop-theory"
+name = "commerce-theory"
 root = "Main"

@@ -1,6 +1,6 @@
-import WebshopTheory.Accounting
+import CommerceTheory.Accounting
 
-namespace WebShopTheoryComplete
+namespace CommerceTheory
 
 /-! ## 6. Marketplace sales, listings, feeds, fees, and payouts -/
 
@@ -10,7 +10,7 @@ sales channels. The proof fields ensure published stock and payout calculations
 stay within the internal source-of-truth limits.
 -/
 
-/-- Closed set of cases for `Marketplace` in the webshop domain model. -/
+/-- Closed set of cases for `Marketplace` in the commerce domain model. -/
 inductive Marketplace where
   | AmazonLike
   | RozetkaLike
@@ -19,7 +19,7 @@ inductive Marketplace where
   | Custom
 deriving DecidableEq, Repr
 
-/-- Closed set of cases for `SalesChannel` in the webshop domain model. -/
+/-- Closed set of cases for `SalesChannel` in the commerce domain model. -/
 inductive SalesChannel where
   | OwnWebsite
   | MarketplaceChannel : Marketplace → SalesChannel
@@ -27,7 +27,7 @@ inductive SalesChannel where
   | DropshipFeed
 deriving DecidableEq, Repr
 
-/-- Closed set of cases for `ListingStatus` in the webshop domain model. -/
+/-- Closed set of cases for `ListingStatus` in the commerce domain model. -/
 inductive ListingStatus where
   | Draft
   | Active
@@ -142,4 +142,4 @@ theorem marketplaceOrder_payout_le_internal_total (mo : MarketplaceOrder) :
     _ = mo.internalOrder.total := mo.gross_matches_internal_total
 
 
-end WebShopTheoryComplete
+end CommerceTheory

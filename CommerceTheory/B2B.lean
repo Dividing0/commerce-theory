@@ -1,6 +1,6 @@
-import WebshopTheory.Marketing
+import CommerceTheory.Marketing
 
-namespace WebShopTheoryComplete
+namespace CommerceTheory
 
 /-! ## 8. Retail, wholesale, B2B, and credit terms -/
 
@@ -10,13 +10,13 @@ minimum order quantities, payment terms, and credit limits. The proofs make sure
 wholesale discounts and credit orders remain within declared business limits.
 -/
 
-/-- Closed set of cases for `TradeMode` in the webshop domain model. -/
+/-- Closed set of cases for `TradeMode` in the commerce domain model. -/
 inductive TradeMode where
   | Retail
   | Wholesale
 deriving DecidableEq, Repr
 
-/-- Closed set of cases for `CustomerKind` in the webshop domain model. -/
+/-- Closed set of cases for `CustomerKind` in the commerce domain model. -/
 inductive CustomerKind where
   | Guest
   | Registered
@@ -39,7 +39,7 @@ theorem wholesaleCustomer_has_wholesale_kind (customer : Customer)
     customer.kind = CustomerKind.WholesaleAccount := by
   exact h.left
 
-/-- Closed set of cases for `PaymentTerms` in the webshop domain model. -/
+/-- Closed set of cases for `PaymentTerms` in the commerce domain model. -/
 inductive PaymentTerms where
   | Prepaid
   | NetDays : Nat → PaymentTerms
@@ -196,4 +196,4 @@ theorem wholesaleCredit_order_keeps_limit_safe
   exact h
 
 
-end WebShopTheoryComplete
+end CommerceTheory

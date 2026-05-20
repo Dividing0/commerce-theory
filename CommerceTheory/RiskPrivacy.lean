@@ -1,6 +1,6 @@
-import WebshopTheory.FulfillmentFinance
+import CommerceTheory.FulfillmentFinance
 
-namespace WebShopTheoryComplete
+namespace CommerceTheory
 
 /-! ## 14. Risk, fraud, privacy, ABAC, and permissions -/
 
@@ -30,7 +30,7 @@ theorem couponUses_do_not_exceed_limit
     uses ≤ policy.maxCouponUses := by
   exact h
 
-/-- Closed set of cases for `Role` in the webshop domain model. -/
+/-- Closed set of cases for `Role` in the commerce domain model. -/
 inductive Role where
   | Customer
   | Support
@@ -40,7 +40,7 @@ inductive Role where
   | Admin
 deriving DecidableEq, Repr
 
-/-- Closed set of cases for `Action` in the webshop domain model. -/
+/-- Closed set of cases for `Action` in the commerce domain model. -/
 inductive Action where
   | ViewOrder
   | PackOrder
@@ -91,7 +91,7 @@ theorem auditedCommand_action_logged (cmd : AuditedCommand) :
     cmd.event.action = cmd.action := by
   exact cmd.event_action_matches
 
-/-- Closed set of cases for `ConsentPurpose` in the webshop domain model. -/
+/-- Closed set of cases for `ConsentPurpose` in the commerce domain model. -/
 inductive ConsentPurpose where
   | Marketing
   | Analytics
@@ -99,7 +99,7 @@ inductive ConsentPurpose where
   | FraudPrevention
 deriving DecidableEq, Repr
 
-/-- Closed set of cases for `ProcessingBasis` in the webshop domain model. -/
+/-- Closed set of cases for `ProcessingBasis` in the commerce domain model. -/
 inductive ProcessingBasis where
   | Consent
   | Contract
@@ -114,4 +114,4 @@ structure DataProcessingPermission where
   allowed : Bool
 
 
-end WebShopTheoryComplete
+end CommerceTheory

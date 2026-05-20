@@ -1,6 +1,6 @@
-import WebshopTheory.Orders
+import CommerceTheory.Orders
 
-namespace WebShopTheoryComplete
+namespace CommerceTheory
 
 /-! ## 5. Accounting, double-entry ledger, and event projections -/
 
@@ -9,7 +9,7 @@ Accounting is modeled with a small double-entry ledger. A `BalancedJournalEntry`
 contains the postings and a proof that total debits equal total credits.
 -/
 
-/-- Closed set of cases for `PostingSide` in the webshop domain model. -/
+/-- Closed set of cases for `PostingSide` in the commerce domain model. -/
 inductive PostingSide where
   | Debit
   | Credit
@@ -79,4 +79,4 @@ theorem paymentCapturedJournal_balanced (accounts : AccountingAccounts) (amount 
   exact (paymentCapturedJournal accounts amount).balanced
 
 
-end WebShopTheoryComplete
+end CommerceTheory

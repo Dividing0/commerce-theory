@@ -1,6 +1,6 @@
-import WebshopTheory.B2B
+import CommerceTheory.B2B
 
-namespace WebShopTheoryComplete
+namespace CommerceTheory
 
 /-! ## 9. Dropshipping suppliers, offers, reservations, PO, SLA, returns -/
 
@@ -65,7 +65,7 @@ theorem dropshipOfferCanBeSold_implies_in_stock
     0 < offer.availableQty := by
   exact h.right.right
 
-/-- Closed set of cases for `SupplierReservationStatus` in the webshop domain model. -/
+/-- Closed set of cases for `SupplierReservationStatus` in the commerce domain model. -/
 inductive SupplierReservationStatus where
   | Requested
   | Confirmed
@@ -176,7 +176,7 @@ structure DropshipShippingQuote where
 def dropshipShippingQuoteCanShip (quote : DropshipShippingQuote) (weight : Weight) : Prop :=
   weight ≤ quote.maxWeight
 
-/-- Closed set of cases for `DropshipPOStatus` in the webshop domain model. -/
+/-- Closed set of cases for `DropshipPOStatus` in the commerce domain model. -/
 inductive DropshipPOStatus where
   | Created
   | Submitted
@@ -261,4 +261,4 @@ theorem dropshipReturn_refund_safe (r : DropshipReturnRequest) :
   exact r.refund_le_customerNet
 
 
-end WebShopTheoryComplete
+end CommerceTheory

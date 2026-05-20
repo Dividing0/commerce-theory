@@ -1,6 +1,6 @@
-import WebshopTheory.Dropshipping
+import CommerceTheory.Dropshipping
 
-namespace WebShopTheoryComplete
+namespace CommerceTheory
 
 /-! ## 10. Dropship profit engine and guaranteed earnings -/
 
@@ -158,4 +158,4 @@ theorem profitLossInt_nonnegative_if_costs_le_revenue
   exact sub_nonneg.mpr (Int.ofNat_le.mpr h)
 
 
-end WebShopTheoryComplete
+end CommerceTheory

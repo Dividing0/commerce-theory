@@ -1,6 +1,6 @@
-import WebshopTheory.CompetitorPricing
+import CommerceTheory.CompetitorPricing
 
-namespace WebShopTheoryComplete
+namespace CommerceTheory
 
 /-! ## 12. Promotions, bundles, MAP/MSRP, search, and recommendations -/
 
@@ -54,7 +54,7 @@ theorem bundleReservation_component_safe
     componentRequiredForBundles r.bundleQty c ≤ c.stockAvailable := by
   exact r.all_components_safe c hmem
 
-/-- Closed set of cases for `PromotionStackingPolicy` in the webshop domain model. -/
+/-- Closed set of cases for `PromotionStackingPolicy` in the commerce domain model. -/
 inductive PromotionStackingPolicy where
   | Exclusive
   | Stackable
@@ -95,4 +95,4 @@ theorem validSearchResult_sellable (x : ValidSearchResultItem) :
   exact x.sellable
 
 
-end WebShopTheoryComplete
+end CommerceTheory

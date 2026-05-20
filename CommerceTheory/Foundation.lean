@@ -1,6 +1,6 @@
 import Mathlib
 
-namespace WebShopTheoryComplete
+namespace CommerceTheory
 
 /-! ## 0. Foundations -/
 
@@ -81,7 +81,7 @@ structure IdempotencyKey where
   value : Nat
 deriving DecidableEq, Repr
 
-/-- Closed set of cases for `Currency` in the webshop domain model. -/
+/-- Closed set of cases for `Currency` in the commerce domain model. -/
 inductive Currency where
   | UAH
   | USD
@@ -188,4 +188,4 @@ theorem profitAmount_plus_costs_eq_revenue
   exact Nat.sub_add_cancel h
 
 
-end WebShopTheoryComplete
+end CommerceTheory

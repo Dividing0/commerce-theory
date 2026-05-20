@@ -1,6 +1,6 @@
-import WebshopTheory.RiskPrivacy
+import CommerceTheory.RiskPrivacy
 
-namespace WebShopTheoryComplete
+namespace CommerceTheory
 
 /-! ## 15. Event sourcing, idempotency, webhooks, and valid state preservation -/
 
@@ -10,7 +10,7 @@ idempotency. The system-state theorem demonstrates the intended proof style:
 operations should preserve global validity when their local invariants hold.
 -/
 
-/-- Closed set of cases for `DomainEvent` in the webshop domain model. -/
+/-- Closed set of cases for `DomainEvent` in the commerce domain model. -/
 inductive DomainEvent where
   | OrderPlaced : OrderId → Money → DomainEvent
   | PaymentCaptured : OrderId → Money → DomainEvent
@@ -86,4 +86,4 @@ theorem reserve_and_refund_preserve_validity
   · exact nextLedger.refunded_le_captured
 
 
-end WebShopTheoryComplete
+end CommerceTheory

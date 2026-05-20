@@ -1,6 +1,6 @@
-import WebshopTheory.Catalog
+import CommerceTheory.Catalog
 
-namespace WebShopTheoryComplete
+namespace CommerceTheory
 
 /-! ## 2. Inventory, warehouse operations, allocation, and concurrency -/
 
@@ -159,4 +159,4 @@ theorem allocation_safe (a : Allocation) :
   exact a.quantity_le_available
 
 
-end WebShopTheoryComplete
+end CommerceTheory

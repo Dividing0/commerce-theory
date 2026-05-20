@@ -1,6 +1,6 @@
-import WebshopTheory.OpportunityPortfolio
+import CommerceTheory.OpportunityPortfolio
 
-namespace WebShopTheoryComplete
+namespace CommerceTheory
 
 /-! ## 19. Main summary theorems -/
 
@@ -27,4 +27,4 @@ theorem competitor_aware_dropship_offer_is_profit_safe
   exact competitorAwareDropshipOffer_profit_guaranteed x
 
 
-end WebShopTheoryComplete
+end CommerceTheory

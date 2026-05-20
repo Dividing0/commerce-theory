@@ -1,6 +1,6 @@
-import WebshopTheory.PostPurchase
+import CommerceTheory.PostPurchase
 
-namespace WebShopTheoryComplete
+namespace CommerceTheory
 
 /-! ## 17. Forecasting, replenishment, and supplier risk -/
 
@@ -10,7 +10,7 @@ forecasts cannot trigger automatic replenishment, and supplier quality must meet
 policy thresholds before it is approved.
 -/
 
-/-- Closed set of cases for `Confidence` in the webshop domain model. -/
+/-- Closed set of cases for `Confidence` in the commerce domain model. -/
 inductive Confidence where
   | Low
   | Medium
@@ -62,4 +62,4 @@ theorem approvedSupplier_defect_ok (a : ApprovedSupplierQuality) :
   exact a.defect_ok
 
 
-end WebShopTheoryComplete
+end CommerceTheory

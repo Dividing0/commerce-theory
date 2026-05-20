@@ -1,6 +1,6 @@
-import WebshopTheory.Forecasting
+import CommerceTheory.Forecasting
 
-namespace WebShopTheoryComplete
+namespace CommerceTheory
 
 /-! ## 18. Abstract dropship opportunity portfolio selection -/
 
@@ -68,4 +68,4 @@ theorem candidate_profit_safe (c : DropshipOpportunityCandidate) :
   exact c.expectedProfit_ge_minProfit
 
 
-end WebShopTheoryComplete
+end CommerceTheory

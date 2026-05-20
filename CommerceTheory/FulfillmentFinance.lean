@@ -1,6 +1,6 @@
-import WebshopTheory.Merchandising
+import CommerceTheory.Merchandising
 
-namespace WebShopTheoryComplete
+namespace CommerceTheory
 
 /-! ## 13. FX, tax, shipping zones, carrier rates, and reconciliation -/
 
@@ -92,4 +92,4 @@ theorem reconciliation_diff_safe (r : ReconciliationWithinTolerance) :
   exact r.diff_le_tolerance
 
 
-end WebShopTheoryComplete
+end CommerceTheory

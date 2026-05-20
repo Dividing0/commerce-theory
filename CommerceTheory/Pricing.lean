@@ -1,6 +1,6 @@
-import WebshopTheory.Inventory
+import CommerceTheory.Inventory
 
-namespace WebShopTheoryComplete
+namespace CommerceTheory
 
 /-! ## 3. Cart, pricing, coupons, shipping, tax, and order totals -/
 
@@ -187,4 +187,4 @@ theorem orderTotal_le_gross_plus_shipping_plus_tax
   exact Nat.add_le_add (Nat.add_le_add hsubtotal hshipping) (Nat.le_refl tax)
 
 
-end WebShopTheoryComplete
+end CommerceTheory

@@ -1,6 +1,6 @@
-import WebshopTheory.Foundation
+import CommerceTheory.Foundation
 
-namespace WebShopTheoryComplete
+namespace CommerceTheory
 
 /-! ## 1. Catalog, content, and product data quality -/
 
@@ -11,7 +11,7 @@ Those fields mean a value of the structure is already validated, and later code
 can reuse the validation without rechecking it.
 -/
 
-/-- Closed set of cases for `ProductStatus` in the webshop domain model. -/
+/-- Closed set of cases for `ProductStatus` in the commerce domain model. -/
 inductive ProductStatus where
   | Draft
   | Active
@@ -85,4 +85,4 @@ theorem validListingContent_title_ok (x : ValidListingContent) :
   exact x.title_ok
 
 
-end WebShopTheoryComplete
+end CommerceTheory

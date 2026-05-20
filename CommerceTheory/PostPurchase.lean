@@ -1,6 +1,6 @@
-import WebshopTheory.EventSourcing
+import CommerceTheory.EventSourcing
 
-namespace WebShopTheoryComplete
+namespace CommerceTheory
 
 /-! ## 16. Subscriptions, gift cards, chargebacks, returns, and cashflow -/
 
@@ -10,7 +10,7 @@ chargebacks, and cashflow plans. Each validated structure stores the bound that
 makes downstream settlement calculations safe.
 -/
 
-/-- Closed set of cases for `SubscriptionStatus2` in the webshop domain model. -/
+/-- Closed set of cases for `SubscriptionStatus2` in the commerce domain model. -/
 inductive SubscriptionStatus2 where
   | Active
   | Paused
@@ -89,4 +89,4 @@ theorem cashflowPlan_safe (p : CashflowPlan) :
   exact p.reserve_safe
 
 
-end WebShopTheoryComplete
+end CommerceTheory

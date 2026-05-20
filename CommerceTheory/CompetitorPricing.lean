@@ -1,6 +1,6 @@
-import WebshopTheory.DropshipProfit
+import CommerceTheory.DropshipProfit
 
-namespace WebShopTheoryComplete
+namespace CommerceTheory
 
 /-! ## 11. Competitor pricing, price floors, repricing, and opportunity safety -/
 
@@ -28,7 +28,7 @@ def competitorOfferRelevant (offer : CompetitorOffer) (sku : Sku) (currency : Cu
 def priceSnapshotFresh (now maxAge observedAt : Timestamp) : Prop :=
   observedAt ≤ now ∧ now - observedAt ≤ maxAge
 
-/-- Closed set of cases for `TrustLevel` in the webshop domain model. -/
+/-- Closed set of cases for `TrustLevel` in the commerce domain model. -/
 inductive TrustLevel where
   | Low
   | Medium
@@ -122,7 +122,7 @@ theorem undercutPrice_le_competitorPrice (competitorPrice delta : Money) :
   unfold undercutPrice
   exact Nat.sub_le competitorPrice delta
 
-/-- Closed set of cases for `CompetitivePricingStrategy` in the webshop domain model. -/
+/-- Closed set of cases for `CompetitivePricingStrategy` in the commerce domain model. -/
 inductive CompetitivePricingStrategy where
   | Match
   | Undercut : Money → CompetitivePricingStrategy
@@ -171,4 +171,4 @@ theorem competitorAwareDropshipOffer_price_le_every_relevant_competitor
   exact hown.trans hbest
 
 
-end WebShopTheoryComplete
+end CommerceTheory

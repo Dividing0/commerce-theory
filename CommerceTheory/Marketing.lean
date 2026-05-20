@@ -1,6 +1,6 @@
-import WebshopTheory.Marketplace
+import CommerceTheory.Marketplace
 
-namespace WebShopTheoryComplete
+namespace CommerceTheory
 
 /-! ## 7. Marketing, acquisition, attribution, consent, and experiments -/
 
@@ -10,7 +10,7 @@ guarantees are budget safety, consent-aware messaging, and bounded attribution
 credit for an order.
 -/
 
-/-- Closed set of cases for `AdPlatform` in the webshop domain model. -/
+/-- Closed set of cases for `AdPlatform` in the commerce domain model. -/
 inductive AdPlatform where
   | GoogleLike
   | MetaLike
@@ -22,7 +22,7 @@ inductive AdPlatform where
   | Custom
 deriving DecidableEq, Repr
 
-/-- Closed set of cases for `AdType` in the webshop domain model. -/
+/-- Closed set of cases for `AdType` in the commerce domain model. -/
 inductive AdType where
   | Search
   | Shopping
@@ -36,7 +36,7 @@ inductive AdType where
   | Affiliate
 deriving DecidableEq, Repr
 
-/-- Closed set of cases for `CampaignStatus` in the webshop domain model. -/
+/-- Closed set of cases for `CampaignStatus` in the commerce domain model. -/
 inductive CampaignStatus where
   | Draft
   | Active
@@ -44,7 +44,7 @@ inductive CampaignStatus where
   | Archived
 deriving DecidableEq, Repr
 
-/-- Closed set of cases for `AdDestination` in the webshop domain model. -/
+/-- Closed set of cases for `AdDestination` in the commerce domain model. -/
 inductive AdDestination where
   | Website
   | MarketplaceStore : Marketplace → AdDestination
@@ -136,7 +136,7 @@ theorem funnel_purchases_le_visitors (f : Funnel) :
   have h3 := f.addToCart_le_visitors
   omega
 
-/-- Closed set of cases for `ConsentStatus` in the webshop domain model. -/
+/-- Closed set of cases for `ConsentStatus` in the commerce domain model. -/
 inductive ConsentStatus where
   | Granted
   | Denied
@@ -152,7 +152,7 @@ theorem denied_consent_cannot_retarget :
     ¬ canRetarget ConsentStatus.Denied := by
   simp [canRetarget]
 
-/-- Closed set of cases for `SubscriptionStatus` in the webshop domain model. -/
+/-- Closed set of cases for `SubscriptionStatus` in the commerce domain model. -/
 inductive SubscriptionStatus where
   | Subscribed
   | Unsubscribed
@@ -216,4 +216,4 @@ theorem experimentVariant_conversions_safe (v : ExperimentVariant) :
   exact v.conversions_le_visitors
 
 
-end WebShopTheoryComplete
+end CommerceTheory
