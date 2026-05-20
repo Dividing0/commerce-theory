@@ -30,6 +30,13 @@ theorem couponUses_do_not_exceed_limit
     uses ≤ policy.maxCouponUses := by
   exact h
 
+/-- Accepted order velocity stays within the fraud policy's hourly limit. -/
+theorem ordersPerHour_do_not_exceed_limit
+    (policy : FraudPolicy) (ordersPerHour : Nat)
+    (h : ordersPerHourAllowed policy ordersPerHour) :
+    ordersPerHour ≤ policy.maxOrdersPerHour := by
+  exact h
+
 /-- Closed set of cases for `Role` in the commerce domain model. -/
 inductive Role where
   | Customer
@@ -69,6 +76,21 @@ theorem deleteOrder_requires_admin (role : Role) (h : CanPerform role Action.Del
     role = Role.Admin := by
   cases role <;> simp [CanPerform] at h ⊢
 
+/-- Administrators can perform every modeled action. -/
+theorem admin_can_perform (action : Action) :
+    CanPerform Role.Admin action := by
+  cases action <;> simp [CanPerform]
+
+/-- Customers cannot issue refunds in the access-control relation. -/
+theorem customer_cannot_issue_refund :
+    ¬ CanPerform Role.Customer Action.IssueRefund := by
+  simp [CanPerform]
+
+/-- Warehouse operators can adjust stock, matching their operational boundary. -/
+theorem warehouse_can_adjust_stock :
+    CanPerform Role.Warehouse Action.AdjustStock := by
+  simp [CanPerform]
+
 /-- Data shape for `AuditEvent`; proof fields record invariants when needed. -/
 structure AuditEvent where
   actor : Role
@@ -90,6 +112,21 @@ structure AuditedCommand where
 theorem auditedCommand_action_logged (cmd : AuditedCommand) :
     cmd.event.action = cmd.action := by
   exact cmd.event_action_matches
+
+/-- Audited commands record the actor that executed the command. -/
+theorem auditedCommand_actor_logged (cmd : AuditedCommand) :
+    cmd.event.actor = cmd.actor := by
+  exact cmd.event_actor_matches
+
+/-- Audited commands record the order they operated on. -/
+theorem auditedCommand_order_logged (cmd : AuditedCommand) :
+    cmd.event.orderId = cmd.orderId := by
+  exact cmd.event_order_matches
+
+/-- Any audited command carries proof that its actor may perform its action. -/
+theorem auditedCommand_allowed (cmd : AuditedCommand) :
+    CanPerform cmd.actor cmd.action := by
+  exact cmd.allowed
 
 /-- Closed set of cases for `ConsentPurpose` in the commerce domain model. -/
 inductive ConsentPurpose where

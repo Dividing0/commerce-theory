@@ -53,6 +53,18 @@ theorem reserveStock_preserves_safety
     (reserveStock s q h).reserved ≤ (reserveStock s q h).total := by
   exact (reserveStock s q h).reserved_le_total
 
+/-- Reserving stock adds exactly the requested quantity to the reserved count. -/
+theorem reserveStock_reserved_eq
+    (s : StockState) (q : Quantity) (h : canReserve s q) :
+    (reserveStock s q h).reserved = s.reserved + q := by
+  rfl
+
+/-- A zero-quantity reservation is always permitted. -/
+theorem canReserve_zero (s : StockState) :
+    canReserve s 0 := by
+  unfold canReserve
+  exact Nat.zero_le (availableStock s)
+
 /-- Data shape for `VersionedStock`; proof fields record invariants when needed. -/
 structure VersionedStock extends StockState where
   version : Nat
@@ -80,6 +92,15 @@ theorem reserveVersionedStock_increases_version
     (hQty : canReserve s.toStockState q) :
     (reserveVersionedStock s q expectedVersion hVersion hQty).version = s.version + 1 := by
   rfl
+
+/-- Optimistic-locking reservation preserves the stock safety invariant. -/
+theorem reserveVersionedStock_preserves_safety
+    (s : VersionedStock) (q expectedVersion : Nat)
+    (hVersion : expectedVersion = s.version)
+    (hQty : canReserve s.toStockState q) :
+    (reserveVersionedStock s q expectedVersion hVersion hQty).reserved ≤
+      (reserveVersionedStock s q expectedVersion hVersion hQty).total := by
+  exact (reserveVersionedStock s q expectedVersion hVersion hQty).reserved_le_total
 
 /-- Data shape for `Warehouse`; proof fields record invariants when needed. -/
 structure Warehouse where

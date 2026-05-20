@@ -93,6 +93,35 @@ theorem cartNetTotal_le_grossTotal (items : List CartLine) :
         lineNetTotal_le_grossTotal line
       simpa [cartNetTotal, cartGrossTotal] using Nat.add_le_add hline ih
 
+/-- Cart-level conservation law: net plus discounts recovers gross. -/
+theorem cartNetTotal_plus_discountTotal_eq_grossTotal (items : List CartLine) :
+    cartNetTotal items + cartDiscountTotal items = cartGrossTotal items := by
+  induction items with
+  | nil =>
+      simp [cartNetTotal, cartDiscountTotal, cartGrossTotal]
+  | cons line rest ih =>
+      have hline := lineNet_plus_discount_eq_gross line
+      calc
+        cartNetTotal (line :: rest) + cartDiscountTotal (line :: rest)
+            = (lineNetTotal line + line.discount) +
+                (cartNetTotal rest + cartDiscountTotal rest) := by
+              simp [cartNetTotal, cartDiscountTotal]
+              ac_rfl
+        _ = lineGrossTotal line + cartGrossTotal rest := by
+              rw [hline, ih]
+        _ = cartGrossTotal (line :: rest) := by
+              simp [cartGrossTotal]
+
+/-- Total discounts never exceed the undiscounted cart gross. -/
+theorem cartDiscountTotal_le_grossTotal (items : List CartLine) :
+    cartDiscountTotal items ≤ cartGrossTotal items := by
+  induction items with
+  | nil =>
+      simp [cartDiscountTotal, cartGrossTotal]
+  | cons line rest ih =>
+      simpa [cartDiscountTotal, cartGrossTotal, lineGrossTotal] using
+        Nat.add_le_add line.discount_le_gross ih
+
 /-- Data shape for `Coupon`; proof fields record invariants when needed. -/
 structure Coupon where
   amount : Money
@@ -161,6 +190,14 @@ theorem shipping_is_free_when_threshold_reached
     (method : ShippingMethod) (subtotal : Money)
     (h : method.freeThreshold ≤ subtotal) :
     shippingCharge method subtotal = 0 := by
+  unfold shippingCharge
+  simp [h]
+
+/-- Shipping falls back to the configured method price before the free threshold. -/
+theorem shippingCharge_eq_price_when_below_threshold
+    (method : ShippingMethod) (subtotal : Money)
+    (h : ¬ method.freeThreshold ≤ subtotal) :
+    shippingCharge method subtotal = method.price := by
   unfold shippingCharge
   simp [h]
 

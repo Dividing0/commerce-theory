@@ -49,6 +49,11 @@ structure BalancedJournalEntry where
   postings : List Posting
   balanced : debitTotal postings = creditTotal postings
 
+/-- Any balanced journal entry exposes equality of debit and credit totals. -/
+theorem balancedJournalEntry_balanced (entry : BalancedJournalEntry) :
+    debitTotal entry.postings = creditTotal entry.postings := by
+  exact entry.balanced
+
 /-- Data shape for `AccountingAccounts`; proof fields record invariants when needed. -/
 structure AccountingAccounts where
   cash : LedgerAccount
@@ -77,6 +82,36 @@ theorem paymentCapturedJournal_balanced (accounts : AccountingAccounts) (amount 
     debitTotal (paymentCapturedJournal accounts amount).postings =
       creditTotal (paymentCapturedJournal accounts amount).postings := by
   exact (paymentCapturedJournal accounts amount).balanced
+
+/-- Refund-issued journal entries are balanced by construction. -/
+theorem refundIssuedJournal_balanced (accounts : AccountingAccounts) (amount : Money) :
+    debitTotal (refundIssuedJournal accounts amount).postings =
+      creditTotal (refundIssuedJournal accounts amount).postings := by
+  exact (refundIssuedJournal accounts amount).balanced
+
+/-- Capturing payment debits cash for exactly the captured amount. -/
+theorem paymentCapturedJournal_debitTotal
+    (accounts : AccountingAccounts) (amount : Money) :
+    debitTotal (paymentCapturedJournal accounts amount).postings = amount := by
+  simp [paymentCapturedJournal, debitTotal, debit, credit]
+
+/-- Capturing payment credits deferred revenue for exactly the captured amount. -/
+theorem paymentCapturedJournal_creditTotal
+    (accounts : AccountingAccounts) (amount : Money) :
+    creditTotal (paymentCapturedJournal accounts amount).postings = amount := by
+  simp [paymentCapturedJournal, creditTotal, debit, credit]
+
+/-- Issuing a refund debits refunds expense for exactly the refunded amount. -/
+theorem refundIssuedJournal_debitTotal
+    (accounts : AccountingAccounts) (amount : Money) :
+    debitTotal (refundIssuedJournal accounts amount).postings = amount := by
+  simp [refundIssuedJournal, debitTotal, debit, credit]
+
+/-- Issuing a refund credits cash for exactly the refunded amount. -/
+theorem refundIssuedJournal_creditTotal
+    (accounts : AccountingAccounts) (amount : Money) :
+    creditTotal (refundIssuedJournal accounts amount).postings = amount := by
+  simp [refundIssuedJournal, creditTotal, debit, credit]
 
 
 end CommerceTheory

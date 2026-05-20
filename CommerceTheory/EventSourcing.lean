@@ -44,6 +44,12 @@ theorem applyWebhook_increases_sequence
     s.lastSequence < (applyWebhook s seq h).lastSequence := by
   exact h
 
+/-- Applying an accepted webhook records the accepted sequence exactly. -/
+theorem applyWebhook_sets_sequence
+    (s : WebhookOrderingState) (seq : Nat) (h : s.lastSequence < seq) :
+    (applyWebhook s seq h).lastSequence = seq := by
+  rfl
+
 /-- Data shape for `IdempotencyState`; proof fields record invariants when needed. -/
 structure IdempotencyState where
   processed : List IdempotencyKey
@@ -59,6 +65,22 @@ def markProcessed (key : IdempotencyKey) (s : IdempotencyState) : IdempotencySta
 /-- States the safety property captured by `markProcessed_contains_key`. -/
 theorem markProcessed_contains_key (key : IdempotencyKey) (s : IdempotencyState) :
     alreadyProcessed key (markProcessed key s) := by
+  unfold alreadyProcessed markProcessed
+  simp
+
+/-- Marking a new key keeps every previously processed key. -/
+theorem markProcessed_preserves_existing
+    (key existing : IdempotencyKey) (s : IdempotencyState)
+    (h : alreadyProcessed existing s) :
+    alreadyProcessed existing (markProcessed key s) := by
+  unfold alreadyProcessed markProcessed at *
+  simp [h]
+
+/-- The processed set after marking is exactly the new key plus the old set. -/
+theorem alreadyProcessed_markProcessed_iff
+    (key existing : IdempotencyKey) (s : IdempotencyState) :
+    alreadyProcessed existing (markProcessed key s) ↔
+      existing = key ∨ alreadyProcessed existing s := by
   unfold alreadyProcessed markProcessed
   simp
 

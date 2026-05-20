@@ -51,6 +51,17 @@ def candidatesMinProfitTotal : List DropshipOpportunityCandidate → Money
   | [] => 0
   | c :: rest => c.minProfit + candidatesMinProfitTotal rest
 
+/-- Across a candidate list, expected profit covers the sum of minimum profits. -/
+theorem candidatesMinProfitTotal_le_profitTotal
+    (candidates : List DropshipOpportunityCandidate) :
+    candidatesMinProfitTotal candidates ≤ candidatesProfitTotal candidates := by
+  induction candidates with
+  | nil =>
+      simp [candidatesMinProfitTotal, candidatesProfitTotal]
+  | cons c rest ih =>
+      simpa [candidatesMinProfitTotal, candidatesProfitTotal] using
+        Nat.add_le_add c.expectedProfit_ge_minProfit ih
+
 /-- Data shape for `DropshipOpportunityPortfolio`; proof fields record invariants when needed. -/
 structure DropshipOpportunityPortfolio where
   selected : List DropshipOpportunityCandidate
@@ -66,6 +77,22 @@ theorem opportunityPortfolio_capital_safe (p : DropshipOpportunityPortfolio) :
 theorem candidate_profit_safe (c : DropshipOpportunityCandidate) :
     c.minProfit ≤ c.expectedProfit := by
   exact c.expectedProfit_ge_minProfit
+
+/-- Candidate target price is profit-safe under its modeled cost floor. -/
+theorem candidate_targetPrice_profit_safe (c : DropshipOpportunityCandidate) :
+    c.minProfit ≤ profitAtOfferPrice c.targetPrice 0 c.costs := by
+  exact profitablePrice_guarantees_minProfit c.targetPrice 0 c.costs c.minProfit c.price_profitable
+
+/-- Candidate target price is no higher than its competitor reference price. -/
+theorem candidate_targetPrice_competitive (c : DropshipOpportunityCandidate) :
+    c.targetPrice ≤ c.competitorPrice := by
+  exact c.targetPrice_le_competitor
+
+/-- A validated portfolio's expected-profit total covers selected minimum profits. -/
+theorem opportunityPortfolio_expectedProfit_covers_minProfit
+    (p : DropshipOpportunityPortfolio) :
+    candidatesMinProfitTotal p.selected ≤ candidatesProfitTotal p.selected := by
+  exact candidatesMinProfitTotal_le_profitTotal p.selected
 
 
 end CommerceTheory

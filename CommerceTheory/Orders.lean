@@ -149,9 +149,23 @@ structure PaymentLedger where
 def remainingRefundAmount (ledger : PaymentLedger) : Money :=
   ledger.captured - ledger.refunded
 
+/-- The remaining refundable amount plus already-refunded money recovers captured money. -/
+theorem remainingRefundAmount_add_refunded_eq_captured (ledger : PaymentLedger) :
+    remainingRefundAmount ledger + ledger.refunded = ledger.captured := by
+  unfold remainingRefundAmount
+  exact Nat.sub_add_cancel ledger.refunded_le_captured
+
 /-- Computes or checks `canRefund` using the validated data in this module. -/
 def canRefund (ledger : PaymentLedger) (amount : Money) : Prop :=
   ledger.refunded + amount ≤ ledger.captured
+
+/-- Any valid refund amount fits inside the remaining refundable balance. -/
+theorem canRefund_amount_le_remaining
+    (ledger : PaymentLedger) (amount : Money) (h : canRefund ledger amount) :
+    amount ≤ remainingRefundAmount ledger := by
+  unfold canRefund at h
+  unfold remainingRefundAmount
+  exact Nat.le_sub_of_add_le (by simpa [Nat.add_comm] using h)
 
 /-- Computes or checks `issueRefund` using the validated data in this module. -/
 def issueRefund (ledger : PaymentLedger) (amount : Money) (h : canRefund ledger amount) :
@@ -159,6 +173,18 @@ def issueRefund (ledger : PaymentLedger) (amount : Money) (h : canRefund ledger 
   { captured := ledger.captured
     refunded := ledger.refunded + amount
     refunded_le_captured := h }
+
+/-- Issuing a refund records exactly the old refunded amount plus the new refund. -/
+theorem issueRefund_refunded_eq
+    (ledger : PaymentLedger) (amount : Money) (h : canRefund ledger amount) :
+    (issueRefund ledger amount h).refunded = ledger.refunded + amount := by
+  rfl
+
+/-- Issuing a refund does not change the captured amount. -/
+theorem issueRefund_captured_eq
+    (ledger : PaymentLedger) (amount : Money) (h : canRefund ledger amount) :
+    (issueRefund ledger amount h).captured = ledger.captured := by
+  rfl
 
 /-- States the safety property captured by `issueRefund_preserves_safety`. -/
 theorem issueRefund_preserves_safety

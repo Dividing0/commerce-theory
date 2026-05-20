@@ -84,5 +84,22 @@ theorem validListingContent_title_ok (x : ValidListingContent) :
     x.content.titleLength ≤ x.policy.maxTitleLength := by
   exact x.title_ok
 
+/-- Valid listing content carries enough images for the marketplace policy. -/
+theorem validListingContent_images_ok (x : ValidListingContent) :
+    x.policy.minImageCount ≤ x.content.imageCount := by
+  exact x.images_ok
+
+/-- Valid listing content has all required marketplace attributes filled. -/
+theorem validListingContent_attrs_ok (x : ValidListingContent) :
+    x.content.requiredAttributesFilled = true := by
+  exact x.attrs_ok
+
+/-- A compact reusable form of all marketplace content-policy checks. -/
+theorem validListingContent_policy_ok (x : ValidListingContent) :
+    x.content.titleLength ≤ x.policy.maxTitleLength ∧
+      x.policy.minImageCount ≤ x.content.imageCount ∧
+      x.content.requiredAttributesFilled = true := by
+  exact ⟨x.title_ok, x.images_ok, x.attrs_ok⟩
+
 
 end CommerceTheory
