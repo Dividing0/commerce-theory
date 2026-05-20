@@ -14,8 +14,12 @@ import CommerceTheory.Merchandising
 import CommerceTheory.FulfillmentFinance
 import CommerceTheory.RiskPrivacy
 import CommerceTheory.EventSourcing
+import CommerceTheory.EventLanguage
+import CommerceTheory.EventReplay
 import CommerceTheory.PostPurchase
 import CommerceTheory.Forecasting
+import CommerceTheory.InventoryAlgorithms
+import CommerceTheory.KeyedTotals
 import CommerceTheory.OpportunityPortfolio
 import CommerceTheory.OpportunityRanking
 import CommerceTheory.Workflow

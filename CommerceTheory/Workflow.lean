@@ -1,5 +1,7 @@
-import CommerceTheory.Orders
+import CommerceTheory.Dropshipping
 import Cslib.Foundations.Semantics.LTS.Basic
+import Cslib.Foundations.Semantics.LTS.Execution
+import Cslib.Foundations.Semantics.LTS.Simulation
 import Cslib.Foundations.Semantics.LTS.Termination
 import Cslib.Foundations.Semantics.LTS.TraceEq
 
@@ -114,6 +116,13 @@ theorem new_order_can_reach_delivered :
     orderStatusLTS.CanReach OrderStatus.New OrderStatus.Delivered := by
   exact ⟨paidFulfillmentTrace, paidFulfillmentTrace_reaches_delivered⟩
 
+/-- The paid-fulfillment trace has a CSLib execution carrying intermediate states. -/
+theorem paidFulfillmentTrace_has_execution :
+    ∃ states : List OrderStatus,
+      orderStatusLTS.Execution
+        OrderStatus.New paidFulfillmentTrace OrderStatus.Delivered states := by
+  exact Cslib.LTS.Execution.of_mTr paidFulfillmentTrace_reaches_delivered
+
 /-- A cancellation trace for an order that has not been paid. -/
 def unpaidCancellationTrace : List OrderTransitionLabel :=
   [OrderTransitionLabel.CancelBeforePayment]
@@ -144,6 +153,18 @@ theorem new_order_not_stuck :
   intro h
   exact h.right
     ⟨OrderTransitionLabel.CapturePayment, OrderStatus.Paid, by simp [orderStatusLTS]⟩
+
+/-- The labelled order-status LTS is deterministic. -/
+instance orderStatusLTS_deterministic : orderStatusLTS.Deterministic where
+  deterministic source label target₁ target₂ h₁ h₂ := by
+    cases label <;> simp [orderStatusLTS] at h₁ h₂ <;>
+      rw [h₁.right, h₂.right]
+
+/-- In the deterministic order LTS, trace equivalence is a simulation relation. -/
+theorem order_trace_equivalence_is_simulation :
+    Cslib.LTS.IsHomSimulation orderStatusLTS
+      (Cslib.LTS.HomTraceEq orderStatusLTS) := by
+  exact Cslib.LTS.TraceEq.deterministic_isSimulation
 
 /-- Cancelled orders have no outgoing labelled transitions. -/
 theorem cancelled_order_has_no_lts_outgoing
@@ -182,5 +203,145 @@ theorem cancelled_trace_equivalent_refunded :
         exact ⟨OrderStatus.Cancelled, Cslib.LTS.MTr.refl⟩
     | stepL htr _ =>
         exact False.elim (refunded_order_has_no_lts_outgoing _ _ htr)
+
+/-! ### Dropship purchase-order workflow -/
+
+/-- Business labels for supplier purchase-order transitions. -/
+inductive DropshipPOTransitionLabel where
+  | Submit
+  | CancelBeforeSubmit
+  | Accept
+  | Reject
+  | CancelSubmitted
+  | ShipAccepted
+  | CancelAccepted
+  | ConfirmDelivery
+deriving DecidableEq, Repr
+
+/-- The dropship purchase-order status machine as a CSLib labelled transition system. -/
+def dropshipPOLTS : Cslib.LTS DropshipPOStatus DropshipPOTransitionLabel where
+  Tr := fun source label target =>
+    match label with
+    | DropshipPOTransitionLabel.Submit =>
+        source = DropshipPOStatus.Created ∧ target = DropshipPOStatus.Submitted
+    | DropshipPOTransitionLabel.CancelBeforeSubmit =>
+        source = DropshipPOStatus.Created ∧ target = DropshipPOStatus.Cancelled
+    | DropshipPOTransitionLabel.Accept =>
+        source = DropshipPOStatus.Submitted ∧ target = DropshipPOStatus.Accepted
+    | DropshipPOTransitionLabel.Reject =>
+        source = DropshipPOStatus.Submitted ∧ target = DropshipPOStatus.Rejected
+    | DropshipPOTransitionLabel.CancelSubmitted =>
+        source = DropshipPOStatus.Submitted ∧ target = DropshipPOStatus.Cancelled
+    | DropshipPOTransitionLabel.ShipAccepted =>
+        source = DropshipPOStatus.Accepted ∧ target = DropshipPOStatus.Shipped
+    | DropshipPOTransitionLabel.CancelAccepted =>
+        source = DropshipPOStatus.Accepted ∧ target = DropshipPOStatus.Cancelled
+    | DropshipPOTransitionLabel.ConfirmDelivery =>
+        source = DropshipPOStatus.Shipped ∧ target = DropshipPOStatus.Delivered
+
+/-- Every CSLib PO transition is one of the existing PO business transitions. -/
+theorem dropshipPOLTS_transition_allowed
+    {source target : DropshipPOStatus} {label : DropshipPOTransitionLabel}
+    (h : dropshipPOLTS.Tr source label target) :
+    CanDropshipPOTransition source target := by
+  cases label <;> simp [dropshipPOLTS] at h <;>
+    rcases h with ⟨rfl, rfl⟩ <;> simp [CanDropshipPOTransition]
+
+/-- Every existing PO transition has a matching CSLib transition label. -/
+theorem dropshipPO_transition_has_lts_label
+    {source target : DropshipPOStatus} (h : CanDropshipPOTransition source target) :
+    ∃ label : DropshipPOTransitionLabel, dropshipPOLTS.Tr source label target := by
+  cases source <;> cases target <;> simp [CanDropshipPOTransition] at h <;>
+    try cases h
+  · exact ⟨DropshipPOTransitionLabel.Submit, by simp [dropshipPOLTS]⟩
+  · exact ⟨DropshipPOTransitionLabel.CancelBeforeSubmit, by simp [dropshipPOLTS]⟩
+  · exact ⟨DropshipPOTransitionLabel.Accept, by simp [dropshipPOLTS]⟩
+  · exact ⟨DropshipPOTransitionLabel.Reject, by simp [dropshipPOLTS]⟩
+  · exact ⟨DropshipPOTransitionLabel.CancelSubmitted, by simp [dropshipPOLTS]⟩
+  · exact ⟨DropshipPOTransitionLabel.ShipAccepted, by simp [dropshipPOLTS]⟩
+  · exact ⟨DropshipPOTransitionLabel.CancelAccepted, by simp [dropshipPOLTS]⟩
+  · exact ⟨DropshipPOTransitionLabel.ConfirmDelivery, by simp [dropshipPOLTS]⟩
+
+/-- Normal dropship supplier fulfillment trace from creation to delivery. -/
+def dropshipPODeliveryTrace : List DropshipPOTransitionLabel :=
+  [ DropshipPOTransitionLabel.Submit
+  , DropshipPOTransitionLabel.Accept
+  , DropshipPOTransitionLabel.ShipAccepted
+  , DropshipPOTransitionLabel.ConfirmDelivery
+  ]
+
+/-- CSLib multistep reachability for the normal supplier PO flow. -/
+theorem dropshipPODeliveryTrace_reaches_delivered :
+    dropshipPOLTS.MTr
+      DropshipPOStatus.Created dropshipPODeliveryTrace DropshipPOStatus.Delivered := by
+  unfold dropshipPODeliveryTrace
+  refine Cslib.LTS.MTr.stepL (s2 := DropshipPOStatus.Submitted) ?_ ?_
+  · simp [dropshipPOLTS]
+  · refine Cslib.LTS.MTr.stepL (s2 := DropshipPOStatus.Accepted) ?_ ?_
+    · simp [dropshipPOLTS]
+    · refine Cslib.LTS.MTr.stepL (s2 := DropshipPOStatus.Shipped) ?_ ?_
+      · simp [dropshipPOLTS]
+      · refine Cslib.LTS.MTr.stepL (s2 := DropshipPOStatus.Delivered) ?_ ?_
+        · simp [dropshipPOLTS]
+        · exact Cslib.LTS.MTr.refl
+
+/-- The normal supplier PO flow has an execution with intermediate statuses. -/
+theorem dropshipPODeliveryTrace_has_execution :
+    ∃ states : List DropshipPOStatus,
+      dropshipPOLTS.Execution
+        DropshipPOStatus.Created dropshipPODeliveryTrace DropshipPOStatus.Delivered states := by
+  exact Cslib.LTS.Execution.of_mTr dropshipPODeliveryTrace_reaches_delivered
+
+/-- A created dropship PO can reach delivered through the accepted supplier path. -/
+theorem dropshipPO_can_reach_delivered :
+    dropshipPOLTS.CanReach DropshipPOStatus.Created DropshipPOStatus.Delivered := by
+  exact ⟨dropshipPODeliveryTrace, dropshipPODeliveryTrace_reaches_delivered⟩
+
+/-- Terminal PO outcomes for supplier workflow reasoning. -/
+def terminalDropshipPOStatus : DropshipPOStatus → Prop
+  | DropshipPOStatus.Delivered => True
+  | DropshipPOStatus.Cancelled => True
+  | DropshipPOStatus.Rejected => True
+  | _ => False
+
+/-- The normal supplier path may terminate in delivery. -/
+theorem dropshipPO_may_terminate :
+    Cslib.LTS.MayTerminate dropshipPOLTS terminalDropshipPOStatus DropshipPOStatus.Created := by
+  exact ⟨DropshipPOStatus.Delivered, trivial, dropshipPO_can_reach_delivered⟩
+
+/-- Cancelled supplier POs have no outgoing labelled transition. -/
+theorem dropshipPO_cancelled_has_no_lts_outgoing
+    (label : DropshipPOTransitionLabel) (next : DropshipPOStatus) :
+    ¬ dropshipPOLTS.Tr DropshipPOStatus.Cancelled label next := by
+  intro h
+  cases label <;> cases next <;> simp [dropshipPOLTS] at h
+
+/-- Rejected supplier POs have no outgoing labelled transition. -/
+theorem dropshipPO_rejected_has_no_lts_outgoing
+    (label : DropshipPOTransitionLabel) (next : DropshipPOStatus) :
+    ¬ dropshipPOLTS.Tr DropshipPOStatus.Rejected label next := by
+  intro h
+  cases label <;> cases next <;> simp [dropshipPOLTS] at h
+
+/-- Cancelled and rejected supplier PO states expose the same future traces. -/
+theorem dropshipPO_cancelled_trace_equivalent_rejected :
+    Cslib.LTS.HomTraceEq dropshipPOLTS DropshipPOStatus.Cancelled DropshipPOStatus.Rejected := by
+  unfold Cslib.LTS.HomTraceEq Cslib.LTS.TraceEq Cslib.LTS.traces
+  ext trace
+  constructor
+  · intro h
+    rcases h with ⟨final, htrace⟩
+    cases htrace with
+    | refl =>
+        exact ⟨DropshipPOStatus.Rejected, Cslib.LTS.MTr.refl⟩
+    | stepL htr _ =>
+        exact False.elim (dropshipPO_cancelled_has_no_lts_outgoing _ _ htr)
+  · intro h
+    rcases h with ⟨final, htrace⟩
+    cases htrace with
+    | refl =>
+        exact ⟨DropshipPOStatus.Cancelled, Cslib.LTS.MTr.refl⟩
+    | stepL htr _ =>
+        exact False.elim (dropshipPO_rejected_has_no_lts_outgoing _ _ htr)
 
 end CommerceTheory

@@ -54,10 +54,17 @@ constructors, and tests.
   consent purposes, and processing bases.
 - `CommerceTheory/EventSourcing.lean`: domain events, envelopes, streams,
   webhooks, idempotency, and state-validity preservation.
+- `CommerceTheory/EventLanguage.lean`: CSLib deterministic automaton and regular
+  language for coarse order-event sequence validation.
+- `CommerceTheory/EventReplay.lean`: CSLib bounded step relations for webhook
+  and validated system-state replay.
 - `CommerceTheory/PostPurchase.lean`: subscriptions, gift cards, chargebacks, and
   cashflow plans.
 - `CommerceTheory/Forecasting.lean`: forecast confidence, replenishment gates,
   supplier quality metrics, and supplier risk policy.
+- `CommerceTheory/InventoryAlgorithms.lean`: CSLib `TimeM` inventory allocation
+  algorithms with explicit operation counts.
+- `CommerceTheory/KeyedTotals.lean`: CSLib finite-support keyed allocation totals.
 - `CommerceTheory/OpportunityPortfolio.lean`: dropship opportunity candidates,
   portfolio capital limits, and minimum-profit constraints.
 - `CommerceTheory/OpportunityRanking.lean`: CSLib timed merge-sort ranking for
@@ -127,15 +134,25 @@ CSLib is most useful in this project where the commerce model already has
 computer-science structure:
 
 - Order, payment, event, and webhook lifecycles naturally fit CSLib labelled
-  transition systems. `CommerceTheory.Workflow` now lifts `OrderStatus`
-  transitions into `Cslib.LTS`, adding multistep reachability, terminal-state
-  reasoning, and trace equivalence.
+  transition systems. `CommerceTheory.Workflow` now lifts `OrderStatus` and
+  `DropshipPOStatus` transitions into `Cslib.LTS`, adding multistep reachability,
+  execution evidence, terminal-state reasoning, simulation, and trace
+  equivalence.
+- Event replay benefits from CSLib's step-counted relations.
+  `CommerceTheory.EventReplay` expresses webhook replay and valid system-state
+  replay as exact/within-step relations.
+- Event sequence validation can use CSLib automata and regular languages.
+  `CommerceTheory.EventLanguage` models a coarse deterministic validator for
+  order event words and proves the accepted language is regular.
 - Opportunity scoring and selection can use CSLib algorithm proofs.
   `CommerceTheory.OpportunityRanking` now uses CSLib's timed merge sort to rank
   expected-profit keys while proving sortedness, permutation preservation,
   output length preservation, and a comparison-count bound.
-- Event replay and bounded process execution are good future fits for CSLib's
-  relation-step utilities, especially around webhook replay and idempotency.
+- Inventory algorithms can use CSLib `TimeM` for explicit cost models.
+  `CommerceTheory.InventoryAlgorithms` counts one operation per allocation row.
+- Sparse business maps can use CSLib finite-support functions.
+  `CommerceTheory.KeyedTotals` gives allocation quantities a finite
+  warehouse/SKU support.
 
 CSLib's automata, language, and process-calculus modules are less directly
 applicable to the current domain model, but they would become useful if the

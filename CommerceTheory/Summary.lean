@@ -1,3 +1,7 @@
+import CommerceTheory.EventLanguage
+import CommerceTheory.EventReplay
+import CommerceTheory.InventoryAlgorithms
+import CommerceTheory.KeyedTotals
 import CommerceTheory.OpportunityRanking
 import CommerceTheory.Workflow
 
@@ -95,10 +99,54 @@ theorem order_workflow_paid_path_reaches_delivered :
     orderStatusLTS.CanReach OrderStatus.New OrderStatus.Delivered := by
   exact new_order_can_reach_delivered
 
+/-- CSLib execution evidence records intermediate states for the normal order workflow. -/
+theorem order_workflow_paid_path_has_execution :
+    ∃ states : List OrderStatus,
+      orderStatusLTS.Execution
+        OrderStatus.New paidFulfillmentTrace OrderStatus.Delivered states := by
+  exact paidFulfillmentTrace_has_execution
+
 /-- CSLib trace equivalence for terminal no-outgoing order outcomes. -/
 theorem order_terminal_outcomes_trace_equivalent :
     Cslib.LTS.HomTraceEq orderStatusLTS OrderStatus.Cancelled OrderStatus.Refunded := by
   exact cancelled_trace_equivalent_refunded
+
+/-- CSLib reachability for the normal dropship supplier purchase-order workflow. -/
+theorem dropship_po_workflow_reaches_delivered :
+    dropshipPOLTS.CanReach DropshipPOStatus.Created DropshipPOStatus.Delivered := by
+  exact dropshipPO_can_reach_delivered
+
+/-- Ordered webhook streams induce a CSLib replay with one accepted step per envelope. -/
+theorem ordered_webhook_replay_has_step_count
+    (s : WebhookOrderingState) (events : List EventEnvelope)
+    (h : streamSequencesStrictlyIncreaseFrom s.lastSequence events) :
+    ∃ next : WebhookOrderingState,
+      WebhookReplayInSteps s next events.length := by
+  exact orderedWebhookStream_relatesInSteps s events h
+
+/-- Bounded valid-system event replay preserves stock and ledger safety. -/
+theorem valid_system_replay_preserves_safety
+    {before after : ValidSystemState} {steps : Nat}
+    (h : ValidSystemReplayInSteps before after steps) :
+    after.stock.reserved ≤ after.stock.total ∧
+      after.ledger.refunded ≤ after.ledger.captured := by
+  exact validSystemReplayInSteps_preserves_validity h
+
+/-- The coarse order-event validator accepts a regular language. -/
+theorem order_event_validator_language_regular :
+    (Cslib.Automata.Acceptor.language orderEventValidator).IsRegular := by
+  exact orderEventValidator_language_regular
+
+/-- CSLib `TimeM` allocation summation preserves the existing allocation safety bound. -/
+theorem timed_allocation_total_safety (allocations : List Allocation) :
+    (timedAllocationsTotal allocations).ret ≤ allocationsAvailableTotal allocations := by
+  exact timedAllocationsTotal_le_availableTotal allocations
+
+/-- CSLib finite-support keyed allocation totals are bounded by aggregate allocation totals. -/
+theorem keyed_allocation_total_safety
+    (allocations : List Allocation) (key : AllocationKey) :
+    allocationQuantityByKey allocations key ≤ allocationsTotal allocations := by
+  exact allocationQuantityByKey_le_total allocations key
 
 /-- CSLib merge sort preserves the extracted opportunity ranking keys. -/
 theorem opportunity_ranking_preserves_rank_keys
