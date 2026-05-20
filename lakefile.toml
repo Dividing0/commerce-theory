@@ -3,6 +3,11 @@ version = "0.1.0"
 defaultTargets = ["commerce-theory"]
 
 [[require]]
+name = "cslib"
+scope = "leanprover"
+rev = "v4.29.0"
+
+[[require]]
 name = "mathlib"
 scope = "leanprover-community"
 rev = "v4.29.1"

@@ -1,4 +1,5 @@
-import CommerceTheory.OpportunityPortfolio
+import CommerceTheory.OpportunityRanking
+import CommerceTheory.Workflow
 
 namespace CommerceTheory
 
@@ -88,6 +89,22 @@ theorem ordered_webhook_replay_succeeds
 theorem supplier_capacity_safety (capacity : SupplierDailyCapacity) :
     capacity.ordersAcceptedToday ≤ capacity.supplier.maxDailyOrders := by
   exact supplierDailyCapacity_accepted_le_supplier_max capacity
+
+/-- CSLib reachability for the normal paid order workflow. -/
+theorem order_workflow_paid_path_reaches_delivered :
+    orderStatusLTS.CanReach OrderStatus.New OrderStatus.Delivered := by
+  exact new_order_can_reach_delivered
+
+/-- CSLib trace equivalence for terminal no-outgoing order outcomes. -/
+theorem order_terminal_outcomes_trace_equivalent :
+    Cslib.LTS.HomTraceEq orderStatusLTS OrderStatus.Cancelled OrderStatus.Refunded := by
+  exact cancelled_trace_equivalent_refunded
+
+/-- CSLib merge sort preserves the extracted opportunity ranking keys. -/
+theorem opportunity_ranking_preserves_rank_keys
+    (candidates : List DropshipOpportunityCandidate) :
+    List.Perm (rankOpportunityKeys candidates).ret (opportunityRankKeys candidates) := by
+  exact rankOpportunityKeys_perm candidates
 
 
 end CommerceTheory

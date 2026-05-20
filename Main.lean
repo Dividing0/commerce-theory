@@ -17,6 +17,8 @@ import CommerceTheory.EventSourcing
 import CommerceTheory.PostPurchase
 import CommerceTheory.Forecasting
 import CommerceTheory.OpportunityPortfolio
+import CommerceTheory.OpportunityRanking
+import CommerceTheory.Workflow
 import CommerceTheory.Summary
 import CommerceTheory.Basic
 

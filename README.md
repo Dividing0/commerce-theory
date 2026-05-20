@@ -16,7 +16,9 @@ constructors, and tests.
 
 - Lean: `leanprover/lean4:v4.29.1`
 - Lake package: `commerce-theory`
-- Dependency: `leanprover-community/mathlib`, pinned to `v4.29.1`
+- Dependencies:
+  - `leanprover-community/mathlib`, pinned to `v4.29.1`
+  - `leanprover/cslib`, pinned to `v4.29.0`
 
 ## Project Layout
 
@@ -58,6 +60,10 @@ constructors, and tests.
   supplier quality metrics, and supplier risk policy.
 - `CommerceTheory/OpportunityPortfolio.lean`: dropship opportunity candidates,
   portfolio capital limits, and minimum-profit constraints.
+- `CommerceTheory/OpportunityRanking.lean`: CSLib timed merge-sort ranking for
+  dropship opportunity profit keys.
+- `CommerceTheory/Workflow.lean`: CSLib labelled transition-system semantics for
+  order-status workflow reachability, termination, and trace equivalence.
 - `CommerceTheory/Summary.lean`: headline theorems that summarize the core safety
   guarantees.
 - `CommerceTheory.lean`: library root.
@@ -114,6 +120,27 @@ validated structures. Theorems then expose the reusable guarantees, such as:
 - refunds never exceed captured payments;
 - marketplace payouts never exceed gross marketplace revenue;
 - dropship offers preserve their stated minimum profit.
+
+## CSLib Integration
+
+CSLib is most useful in this project where the commerce model already has
+computer-science structure:
+
+- Order, payment, event, and webhook lifecycles naturally fit CSLib labelled
+  transition systems. `CommerceTheory.Workflow` now lifts `OrderStatus`
+  transitions into `Cslib.LTS`, adding multistep reachability, terminal-state
+  reasoning, and trace equivalence.
+- Opportunity scoring and selection can use CSLib algorithm proofs.
+  `CommerceTheory.OpportunityRanking` now uses CSLib's timed merge sort to rank
+  expected-profit keys while proving sortedness, permutation preservation,
+  output length preservation, and a comparison-count bound.
+- Event replay and bounded process execution are good future fits for CSLib's
+  relation-step utilities, especially around webhook replay and idempotency.
+
+CSLib's automata, language, and process-calculus modules are less directly
+applicable to the current domain model, but they would become useful if the
+project starts modeling protocol languages, feed validators, or external API
+conversation traces.
 
 ## Notes
 
