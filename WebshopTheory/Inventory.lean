@@ -25,14 +25,13 @@ def availableStock (s : StockState) : Quantity :=
 theorem availableStock_le_total (s : StockState) :
     availableStock s ≤ s.total := by
   unfold availableStock
-  omega
+  exact Nat.sub_le s.total s.reserved
 
 /-- States the safety property captured by `availableStock_add_reserved_eq_total`. -/
 theorem availableStock_add_reserved_eq_total (s : StockState) :
     availableStock s + s.reserved = s.total := by
   unfold availableStock
-  have h := s.reserved_le_total
-  omega
+  exact Nat.sub_add_cancel s.reserved_le_total
 
 /-- Computes or checks `canReserve` using the validated data in this module. -/
 def canReserve (s : StockState) (q : Quantity) : Prop :=
@@ -46,8 +45,7 @@ def reserveStock (s : StockState) (q : Quantity) (h : canReserve s q) : StockSta
     reserved_le_total := by
       unfold canReserve at h
       unfold availableStock at h
-      have hs := s.reserved_le_total
-      omega }
+      exact Nat.add_le_of_le_sub' s.reserved_le_total h }
 
 /-- States the safety property captured by `reserveStock_preserves_safety`. -/
 theorem reserveStock_preserves_safety
@@ -66,7 +64,7 @@ and a successful reservation increments the version by one.
 def reserveVersionedStock
     (s : VersionedStock)
     (q expectedVersion : Nat)
-    (hVersion : expectedVersion = s.version)
+    (_hVersion : expectedVersion = s.version)
     (hQty : canReserve s.toStockState q) : VersionedStock :=
   let next := reserveStock s.toStockState q hQty
   { sku := next.sku

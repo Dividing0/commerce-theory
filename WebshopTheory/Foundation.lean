@@ -125,7 +125,7 @@ theorem add_amount {c : Currency} (a b : MoneyIn c) :
 theorem sub_le_left {c : Currency} (a b : MoneyIn c) :
     (MoneyIn.sub a b).amount ≤ a.amount := by
   unfold MoneyIn.sub
-  omega
+  exact Nat.sub_le a.amount b.amount
 
 end MoneyIn
 
@@ -169,7 +169,7 @@ def profitAmount (revenue totalCosts : Money) : Money :=
 theorem profitAmount_le_revenue (revenue totalCosts : Money) :
     profitAmount revenue totalCosts ≤ revenue := by
   unfold profitAmount
-  omega
+  exact Nat.sub_le revenue totalCosts
 
 /-- States the safety property captured by `profitAmount_ge_minProfit`. -/
 theorem profitAmount_ge_minProfit
@@ -177,7 +177,7 @@ theorem profitAmount_ge_minProfit
     (h : totalCosts + minProfit ≤ revenue) :
     minProfit ≤ profitAmount revenue totalCosts := by
   unfold profitAmount
-  omega
+  exact Nat.le_sub_of_add_le (by simpa [Nat.add_comm] using h)
 
 /-- States the safety property captured by `profitAmount_plus_costs_eq_revenue`. -/
 theorem profitAmount_plus_costs_eq_revenue
@@ -185,7 +185,7 @@ theorem profitAmount_plus_costs_eq_revenue
     (h : totalCosts ≤ revenue) :
     profitAmount revenue totalCosts + totalCosts = revenue := by
   unfold profitAmount
-  omega
+  exact Nat.sub_add_cancel h
 
 
 end WebShopTheoryComplete
