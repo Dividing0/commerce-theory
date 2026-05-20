@@ -168,16 +168,63 @@ def allocationsTotal : List Allocation → Quantity
   | [] => 0
   | a :: rest => a.quantity + allocationsTotal rest
 
+/-- Sum available quantities across the nodes referenced by allocations. -/
+def allocationsAvailableTotal : List Allocation → Quantity
+  | [] => 0
+  | a :: rest => availableStock a.node.stock + allocationsAvailableTotal rest
+
+/--
+Allocation keys identify the warehouse/SKU bucket used by an allocation.
+Distinct keys rule out double-counting the same warehouse stock for one SKU.
+-/
+def allocationKeysDistinct (allocations : List Allocation) : Prop :=
+  (allocations.map fun a => (a.node.warehouse.id, a.node.stock.sku.value)).Nodup
+
+/-- Allocation totals are bounded by the corresponding available-stock totals. -/
+theorem allocationsTotal_le_availableTotal (allocations : List Allocation) :
+    allocationsTotal allocations ≤ allocationsAvailableTotal allocations := by
+  induction allocations with
+  | nil =>
+      simp [allocationsTotal, allocationsAvailableTotal]
+  | cons a rest ih =>
+      simpa [allocationsTotal, allocationsAvailableTotal] using
+        Nat.add_le_add a.quantity_le_available ih
+
 /-- A fulfillment plan is valid when allocations exactly cover the request. -/
 structure FulfillmentPlan where
   requested : Quantity
   allocations : List Allocation
   total_eq_requested : allocationsTotal allocations = requested
 
+/-- A fulfillment plan whose allocation keys cannot duplicate warehouse/SKU buckets. -/
+structure DistinctFulfillmentPlan where
+  requested : Quantity
+  allocations : List Allocation
+  total_eq_requested : allocationsTotal allocations = requested
+  allocation_keys_distinct : allocationKeysDistinct allocations
+
 /-- States the safety property captured by `allocation_safe`. -/
 theorem allocation_safe (a : Allocation) :
     a.quantity ≤ availableStock a.node.stock := by
   exact a.quantity_le_available
+
+/-- Any fulfillment plan's requested quantity is bounded by its available-stock total. -/
+theorem fulfillmentPlan_requested_le_availableTotal (p : FulfillmentPlan) :
+    p.requested ≤ allocationsAvailableTotal p.allocations := by
+  rw [← p.total_eq_requested]
+  exact allocationsTotal_le_availableTotal p.allocations
+
+/-- Distinct fulfillment plans expose their no-duplicate warehouse/SKU guarantee. -/
+theorem distinctFulfillmentPlan_keys_distinct (p : DistinctFulfillmentPlan) :
+    allocationKeysDistinct p.allocations := by
+  exact p.allocation_keys_distinct
+
+/-- Distinct fulfillment plans also inherit the aggregate available-stock bound. -/
+theorem distinctFulfillmentPlan_requested_le_availableTotal
+    (p : DistinctFulfillmentPlan) :
+    p.requested ≤ allocationsAvailableTotal p.allocations := by
+  rw [← p.total_eq_requested]
+  exact allocationsTotal_le_availableTotal p.allocations
 
 
 end CommerceTheory

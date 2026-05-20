@@ -139,6 +139,13 @@ theorem coupon_application_meets_min_subtotal
     coupon.minSubtotal ≤ subtotal := by
   exact h.left
 
+/-- Applying a coupon also proves the usage count is still below its cap. -/
+theorem coupon_application_usage_below_max
+    (coupon : Coupon) (subtotal : Money) (usesBefore : Nat)
+    (h : couponCanBeApplied coupon subtotal usesBefore) :
+    usesBefore < coupon.maxUses := by
+  exact h.right
+
 /-- Computes or checks `subtotalAfterCouponAmount` using the validated data in this module. -/
 def subtotalAfterCouponAmount (subtotal couponAmount : Money) : Money :=
   subtotal - couponAmount

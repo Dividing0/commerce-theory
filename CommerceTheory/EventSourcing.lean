@@ -29,6 +29,24 @@ structure EventStream where
   events : List EventEnvelope
   lastSequence : Nat
 
+/-- Event envelopes are strictly ordered after a supplied previous sequence. -/
+def streamSequencesStrictlyIncreaseFrom : Nat → List EventEnvelope → Prop
+  | _last, [] => True
+  | last, event :: rest =>
+      last < event.sequence ∧ streamSequencesStrictlyIncreaseFrom event.sequence rest
+
+/-- Event streams whose envelopes are ordered from sequence zero. -/
+def streamSequencesStrictlyIncrease (stream : EventStream) : Prop :=
+  streamSequencesStrictlyIncreaseFrom 0 stream.events
+
+/-- Ordered nonempty streams expose that the first envelope sequence is positive. -/
+theorem streamSequencesStrictlyIncreaseFrom_head
+    (last : Nat) (event : EventEnvelope) (rest : List EventEnvelope)
+    (h : streamSequencesStrictlyIncreaseFrom last (event :: rest)) :
+    last < event.sequence := by
+  exact h.left
+
+
 /-- Data shape for `WebhookOrderingState`; proof fields record invariants when needed. -/
 structure WebhookOrderingState where
   lastSequence : Nat
@@ -49,6 +67,34 @@ theorem applyWebhook_sets_sequence
     (s : WebhookOrderingState) (seq : Nat) (h : s.lastSequence < seq) :
     (applyWebhook s seq h).lastSequence = seq := by
   rfl
+
+/-- Replay a webhook stream, rejecting the first envelope that is not newer. -/
+def replayWebhookStream :
+    WebhookOrderingState → List EventEnvelope → Option WebhookOrderingState
+  | s, [] => some s
+  | s, event :: rest =>
+      if h : s.lastSequence < event.sequence then
+        replayWebhookStream (applyWebhook s event.sequence h) rest
+      else
+        none
+
+/-- Strictly ordered webhook streams replay successfully. -/
+theorem replayWebhookStream_succeeds_of_ordered
+    (s : WebhookOrderingState) (events : List EventEnvelope)
+    (h : streamSequencesStrictlyIncreaseFrom s.lastSequence events) :
+    ∃ next : WebhookOrderingState, replayWebhookStream s events = some next := by
+  induction events generalizing s with
+  | nil =>
+      exact ⟨s, rfl⟩
+  | cons event rest ih =>
+      have hseq : s.lastSequence < event.sequence := h.left
+      have hrest :
+          streamSequencesStrictlyIncreaseFrom
+            (applyWebhook s event.sequence hseq).lastSequence rest := by
+        simpa [applyWebhook] using h.right
+      rcases ih (applyWebhook s event.sequence hseq) hrest with ⟨next, hnext⟩
+      refine ⟨next, ?_⟩
+      simp [replayWebhookStream, hseq, hnext]
 
 /-- Data shape for `IdempotencyState`; proof fields record invariants when needed. -/
 structure IdempotencyState where
@@ -88,6 +134,48 @@ theorem alreadyProcessed_markProcessed_iff
 structure ValidSystemState where
   stock : StockState
   ledger : PaymentLedger
+
+/-- Apply a stock-reserved event to the validated state when SKU and quantity are valid. -/
+def applyStockReservedEvent
+    (state : ValidSystemState)
+    (sku : Sku) (quantity : Quantity)
+    (_hSku : state.stock.sku = sku)
+    (hReserve : canReserve state.stock quantity) :
+    ValidSystemState :=
+  { stock := reserveStock state.stock quantity hReserve
+    ledger := state.ledger }
+
+/-- Applying a stock-reserved event preserves stock and ledger validity. -/
+theorem applyStockReservedEvent_preserves_validity
+    (state : ValidSystemState)
+    (sku : Sku) (quantity : Quantity)
+    (hSku : state.stock.sku = sku)
+    (hReserve : canReserve state.stock quantity) :
+    let next := applyStockReservedEvent state sku quantity hSku hReserve
+    next.stock.reserved ≤ next.stock.total ∧
+      next.ledger.refunded ≤ next.ledger.captured := by
+  simp [applyStockReservedEvent, reserveStock_preserves_safety]
+  exact state.ledger.refunded_le_captured
+
+/-- Apply a refund-issued event to the validated state when the amount is refundable. -/
+def applyRefundIssuedEvent
+    (state : ValidSystemState)
+    (amount : Money)
+    (hRefund : canRefund state.ledger amount) :
+    ValidSystemState :=
+  { stock := state.stock
+    ledger := issueRefund state.ledger amount hRefund }
+
+/-- Applying a refund-issued event preserves stock and ledger validity. -/
+theorem applyRefundIssuedEvent_preserves_validity
+    (state : ValidSystemState)
+    (amount : Money)
+    (hRefund : canRefund state.ledger amount) :
+    let next := applyRefundIssuedEvent state amount hRefund
+    next.stock.reserved ≤ next.stock.total ∧
+      next.ledger.refunded ≤ next.ledger.captured := by
+  simp [applyRefundIssuedEvent, issueRefund_preserves_safety]
+  exact state.stock.reserved_le_total
 
 /--
 A representative preservation theorem: reserving stock and issuing a valid

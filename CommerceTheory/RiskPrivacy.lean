@@ -150,5 +150,24 @@ structure DataProcessingPermission where
   basis : ProcessingBasis
   allowed : Bool
 
+/-- Processing permission is usable only when it has been explicitly allowed. -/
+def dataProcessingAllowed (p : DataProcessingPermission) : Prop :=
+  p.allowed = true
+
+/-- Explicitly allowed data-processing permissions expose their allow flag. -/
+theorem dataProcessingAllowed_is_true
+    (p : DataProcessingPermission) (h : dataProcessingAllowed p) :
+    p.allowed = true := by
+  exact h
+
+/-- Consent-based marketing permission is allowed only when its flag is true. -/
+theorem marketingConsentProcessing_requires_allowed_flag
+    (p : DataProcessingPermission)
+    (_hPurpose : p.purpose = ConsentPurpose.Marketing)
+    (_hBasis : p.basis = ProcessingBasis.Consent)
+    (h : dataProcessingAllowed p) :
+    p.allowed = true := by
+  exact h
+
 
 end CommerceTheory

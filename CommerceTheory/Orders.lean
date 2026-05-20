@@ -46,6 +46,16 @@ theorem order_total_is_safe (order : Order) :
       exact orderTotal_le_gross_plus_shipping_plus_tax
         order.shippingMethod order.couponAmount order.tax order.items
 
+/-- A validated order exposes that its selected shipping method can carry the cart. -/
+theorem order_shipping_available (order : Order) :
+    cartWeightTotal order.items ≤ order.shippingMethod.maxWeight := by
+  exact order.shipping_available
+
+/-- A validated order's stored total is exactly the pricing-module calculation. -/
+theorem order_total_matches_calculation (order : Order) :
+    order.total = orderTotal order.shippingMethod order.couponAmount order.tax order.items := by
+  exact order.total_correct
+
 /-- The allowed order status transitions, written as an explicit relation. -/
 inductive CanOrderTransition : OrderStatus → OrderStatus → Prop where
   | new_paid : CanOrderTransition OrderStatus.New OrderStatus.Paid
@@ -138,6 +148,26 @@ def markPaid
     total := order.total
     currency := order.currency
     total_pos := order.total_pos }
+
+/-- Marking an order paid preserves the validated order total. -/
+theorem markPaid_preserves_total
+    (order : TypedOrder OrderStatus.New)
+    (payment : CapturedPayment)
+    (hOrder : payment.orderId = order.id)
+    (hAmount : payment.amount = order.total)
+    (hCurrency : payment.currency = order.currency) :
+    (markPaid order payment hOrder hAmount hCurrency).total = order.total := by
+  rfl
+
+/-- A payment that marks an order paid matches the paid order's total. -/
+theorem markPaid_payment_amount_eq_total
+    (order : TypedOrder OrderStatus.New)
+    (payment : CapturedPayment)
+    (hOrder : payment.orderId = order.id)
+    (hAmount : payment.amount = order.total)
+    (hCurrency : payment.currency = order.currency) :
+    payment.amount = (markPaid order payment hOrder hAmount hCurrency).total := by
+  exact hAmount
 
 /-- Tracks cumulative refunds and prevents refunding more than was captured. -/
 structure PaymentLedger where

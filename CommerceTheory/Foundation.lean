@@ -121,6 +121,26 @@ theorem add_amount {c : Currency} (a b : MoneyIn c) :
     (MoneyIn.add a b).amount = a.amount + b.amount := by
   rfl
 
+/-- The zero amount has value zero in its currency. -/
+theorem zero_amount (c : Currency) :
+    (MoneyIn.zero c).amount = 0 := by
+  rfl
+
+/-- Adding zero on the right preserves the amount. -/
+theorem add_zero_amount {c : Currency} (a : MoneyIn c) :
+    (MoneyIn.add a (MoneyIn.zero c)).amount = a.amount := by
+  simp [MoneyIn.add, MoneyIn.zero]
+
+/-- Adding zero on the left preserves the amount. -/
+theorem zero_add_amount {c : Currency} (a : MoneyIn c) :
+    (MoneyIn.add (MoneyIn.zero c) a).amount = a.amount := by
+  simp [MoneyIn.add, MoneyIn.zero]
+
+/-- Currency-safe money addition is commutative at the amount level. -/
+theorem add_amount_comm {c : Currency} (a b : MoneyIn c) :
+    (MoneyIn.add a b).amount = (MoneyIn.add b a).amount := by
+  simp [MoneyIn.add, Nat.add_comm]
+
 /-- States the safety property captured by `sub_le_left`. -/
 theorem sub_le_left {c : Currency} (a b : MoneyIn c) :
     (MoneyIn.sub a b).amount ≤ a.amount := by
@@ -144,6 +164,18 @@ theorem sameCurrency_symmetric (a b : MoneyAmount) (h : sameCurrency a b) :
   unfold sameCurrency at *
   exact h.symm
 
+/-- Runtime-style currency equality is reflexive. -/
+theorem sameCurrency_refl (a : MoneyAmount) :
+    sameCurrency a a := by
+  rfl
+
+/-- Runtime-style currency equality is transitive. -/
+theorem sameCurrency_trans
+    (a b c : MoneyAmount) (hab : sameCurrency a b) (hbc : sameCurrency b c) :
+    sameCurrency a c := by
+  unfold sameCurrency at *
+  exact hab.trans hbc
+
 /--
 Basis points are hundredths of a percent. The proof field prevents values above
 10000, so this can represent rates from 0% through 100%.
@@ -161,6 +193,13 @@ theorem bps_mul_bound (bp : BasisPoints) (amount : Money) :
     amount * bp.value ≤ amount * 10000 := by
   exact Nat.mul_le_mul_left amount bp.value_le_10000
 
+/-- Applying a basis-point rate between 0% and 100% never exceeds the amount. -/
+theorem applyBps_le_amount (bp : BasisPoints) (amount : Money) :
+    applyBps bp amount ≤ amount := by
+  unfold applyBps
+  exact Nat.div_le_of_le_mul (by
+    simpa [Nat.mul_comm] using bps_mul_bound bp amount)
+
 /-- Profit is modeled conservatively as natural subtraction, flooring at zero. -/
 def profitAmount (revenue totalCosts : Money) : Money :=
   revenue - totalCosts
@@ -170,6 +209,13 @@ theorem profitAmount_le_revenue (revenue totalCosts : Money) :
     profitAmount revenue totalCosts ≤ revenue := by
   unfold profitAmount
   exact Nat.sub_le revenue totalCosts
+
+/-- If costs cover revenue, conservative natural-number profit is zero. -/
+theorem profitAmount_eq_zero_of_revenue_le_costs
+    (revenue totalCosts : Money) (h : revenue ≤ totalCosts) :
+    profitAmount revenue totalCosts = 0 := by
+  unfold profitAmount
+  exact Nat.sub_eq_zero_of_le h
 
 /-- States the safety property captured by `profitAmount_ge_minProfit`. -/
 theorem profitAmount_ge_minProfit

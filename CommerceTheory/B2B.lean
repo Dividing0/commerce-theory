@@ -39,6 +39,12 @@ theorem wholesaleCustomer_has_wholesale_kind (customer : Customer)
     customer.kind = CustomerKind.WholesaleAccount := by
   exact h.left
 
+/-- Wholesale-capable customers have explicit wholesale approval. -/
+theorem wholesaleCustomer_is_approved (customer : Customer)
+    (h : customerCanBuyWholesale customer) :
+    customer.wholesaleApproved = true := by
+  exact h.right
+
 /-- Closed set of cases for `PaymentTerms` in the commerce domain model. -/
 inductive PaymentTerms where
   | Prepaid
@@ -90,6 +96,11 @@ theorem tradeEntry_wholesale_cost_le_price (entry : TradePriceBookEntry) :
     entry.unitCost ≤ entry.wholesaleUnitPrice := by
   exact Nat.le_of_add_right_le entry.wholesale_margin_ok
 
+/-- Retail price-book entries cover their unit cost. -/
+theorem tradeEntry_retail_cost_le_price (entry : TradePriceBookEntry) :
+    entry.unitCost ≤ entry.retailUnitPrice := by
+  exact Nat.le_of_add_right_le entry.retail_margin_ok
+
 /-- States the safety property captured by `wholesaleUnitPrice_le_retailUnitPrice`. -/
 theorem wholesaleUnitPrice_le_retailUnitPrice (entry : TradePriceBookEntry) :
     entry.wholesaleUnitPrice ≤ entry.retailUnitPrice := by
@@ -115,6 +126,12 @@ theorem retailLineNet_le_grossTotal (line : RetailLine) :
     retailLineNetTotal line ≤ retailLineGrossTotal line := by
   unfold retailLineNetTotal
   exact Nat.sub_le (retailLineGrossTotal line) line.discount
+
+/-- Retail line net plus discount recovers the retail gross total. -/
+theorem retailLineNet_plus_discount_eq_gross (line : RetailLine) :
+    retailLineNetTotal line + line.discount = retailLineGrossTotal line := by
+  unfold retailLineNetTotal
+  exact Nat.sub_add_cancel line.discount_le_gross
 
 /-- Data shape for `WholesaleLine`; proof fields record invariants when needed. -/
 structure WholesaleLine where
@@ -167,6 +184,12 @@ theorem wholesaleLineNet_le_retailEquivalent (line : WholesaleLine) :
   have h2 := wholesaleLineGross_le_retailEquivalent line
   exact h1.trans h2
 
+/-- Wholesale line net plus discount recovers the wholesale gross total. -/
+theorem wholesaleLineNet_plus_discount_eq_gross (line : WholesaleLine) :
+    wholesaleLineNetTotal line + line.discount = wholesaleLineGrossTotal line := by
+  unfold wholesaleLineNetTotal
+  exact Nat.sub_add_cancel line.discount_le_gross
+
 /-- States the safety property captured by `wholesaleOrderNetTotal_le_retailEquivalentTotal`. -/
 theorem wholesaleOrderNetTotal_le_retailEquivalentTotal (lines : List WholesaleLine) :
     wholesaleOrderNetTotal lines ≤ wholesaleRetailEquivalentTotal lines := by
@@ -194,6 +217,12 @@ theorem wholesaleCredit_order_keeps_limit_safe
     (h : canPlaceWholesaleCreditOrder account orderTotal) :
     account.outstanding + orderTotal ≤ account.creditLimit := by
   exact h
+
+/-- Wholesale credit accounts always belong to approved wholesale customers. -/
+theorem wholesaleCredit_customer_can_buy_wholesale
+    (account : WholesaleCreditAccount) :
+    customerCanBuyWholesale account.customer := by
+  exact account.customer_can_buy_wholesale
 
 
 end CommerceTheory

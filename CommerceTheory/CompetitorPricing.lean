@@ -28,6 +28,20 @@ def competitorOfferRelevant (offer : CompetitorOffer) (sku : Sku) (currency : Cu
 def priceSnapshotFresh (now maxAge observedAt : Timestamp) : Prop :=
   observedAt ≤ now ∧ now - observedAt ≤ maxAge
 
+/-- Fresh competitor snapshots were not observed in the future. -/
+theorem priceSnapshotFresh_observedAt_le_now
+    (now maxAge observedAt : Timestamp)
+    (h : priceSnapshotFresh now maxAge observedAt) :
+    observedAt ≤ now := by
+  exact h.left
+
+/-- Fresh competitor snapshots are inside the accepted age window. -/
+theorem priceSnapshotFresh_age_le_maxAge
+    (now maxAge observedAt : Timestamp)
+    (h : priceSnapshotFresh now maxAge observedAt) :
+    now - observedAt ≤ maxAge := by
+  exact h.right
+
 /-- Closed set of cases for `TrustLevel` in the commerce domain model. -/
 inductive TrustLevel where
   | Low
@@ -44,6 +58,16 @@ def trustAllowsAutoRepricing : TrustLevel → Prop
 /-- States the safety property captured by `lowTrust_not_autoRepricing`. -/
 theorem lowTrust_not_autoRepricing :
     ¬ trustAllowsAutoRepricing TrustLevel.Low := by
+  simp [trustAllowsAutoRepricing]
+
+/-- Medium-trust competitor feeds may be used for automatic repricing. -/
+theorem mediumTrust_allows_autoRepricing :
+    trustAllowsAutoRepricing TrustLevel.Medium := by
+  simp [trustAllowsAutoRepricing]
+
+/-- High-trust competitor feeds may be used for automatic repricing. -/
+theorem highTrust_allows_autoRepricing :
+    trustAllowsAutoRepricing TrustLevel.High := by
   simp [trustAllowsAutoRepricing]
 
 /-- Data shape for `CompetitorPriceBenchmark`; proof fields record invariants when needed. -/

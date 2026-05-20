@@ -58,6 +58,22 @@ def destinationMatchesMarketplace (destination : AdDestination) (marketplace : M
   | AdDestination.MarketplaceStore m => m = marketplace
   | AdDestination.MarketplaceListing m _ => m = marketplace
 
+/-- Website destinations never match a marketplace-specific destination. -/
+theorem websiteDestination_not_marketplace (marketplace : Marketplace) :
+    ¬ destinationMatchesMarketplace AdDestination.Website marketplace := by
+  simp [destinationMatchesMarketplace]
+
+/-- Marketplace store destinations match their own marketplace. -/
+theorem marketplaceStoreDestination_matches (marketplace : Marketplace) :
+    destinationMatchesMarketplace (AdDestination.MarketplaceStore marketplace) marketplace := by
+  simp [destinationMatchesMarketplace]
+
+/-- Marketplace listing destinations match their own marketplace. -/
+theorem marketplaceListingDestination_matches (marketplace : Marketplace) (externalId : Nat) :
+    destinationMatchesMarketplace
+      (AdDestination.MarketplaceListing marketplace externalId) marketplace := by
+  simp [destinationMatchesMarketplace]
+
 /-- Data shape for `MarketingCampaign`; proof fields record invariants when needed. -/
 structure MarketingCampaign where
   id : CampaignId
@@ -78,6 +94,11 @@ structure MarketingCampaign where
 theorem campaign_spend_le_budget (campaign : MarketingCampaign) :
     campaign.spend ≤ campaign.budget := by
   exact campaign.spend_le_budget
+
+/-- Campaign click counts cannot exceed campaign impressions. -/
+theorem campaign_clicks_le_impressions (campaign : MarketingCampaign) :
+    campaign.clicks ≤ campaign.impressions := by
+  exact campaign.clicks_le_impressions
 
 /-- Computes or checks `campaignsSpendTotal` using the validated data in this module. -/
 def campaignsSpendTotal : List MarketingCampaign → Money
@@ -110,13 +131,32 @@ theorem clickAttributed_conversions_le_impressions (c : ClickAttributedCampaign)
   have h2 := c.campaign.clicks_le_impressions
   omega
 
+/-- Click-attributed conversions are bounded by clicks. -/
+theorem clickAttributed_conversions_le_clicks (c : ClickAttributedCampaign) :
+    c.campaign.conversions ≤ c.campaign.clicks := by
+  exact c.conversions_le_clicks
+
 /-- Computes or checks `meetsROASTarget` using the validated data in this module. -/
 def meetsROASTarget (campaign : MarketingCampaign) (num den : Nat) : Prop :=
   campaign.attributedRevenue * den ≥ campaign.spend * num
 
+/-- A campaign meeting a ROAS target exposes the target inequality. -/
+theorem meetsROASTarget_safe
+    (campaign : MarketingCampaign) (num den : Nat)
+    (h : meetsROASTarget campaign num den) :
+    campaign.spend * num ≤ campaign.attributedRevenue * den := by
+  exact h
+
 /-- Computes or checks `meetsROITarget` using the validated data in this module. -/
 def meetsROITarget (profit adSpend : Money) (num den : Nat) : Prop :=
   profit * den ≥ adSpend * num
+
+/-- A profit/ad-spend pair meeting an ROI target exposes the target inequality. -/
+theorem meetsROITarget_safe
+    (profit adSpend : Money) (num den : Nat)
+    (h : meetsROITarget profit adSpend num den) :
+    adSpend * num ≤ profit * den := by
+  exact h
 
 /-- Data shape for `Funnel`; proof fields record invariants when needed. -/
 structure Funnel where
@@ -136,6 +176,21 @@ theorem funnel_purchases_le_visitors (f : Funnel) :
   have h3 := f.addToCart_le_visitors
   omega
 
+/-- Funnel add-to-cart counts are bounded by visitors. -/
+theorem funnel_addToCart_le_visitors (f : Funnel) :
+    f.addToCart ≤ f.visitors := by
+  exact f.addToCart_le_visitors
+
+/-- Funnel checkout starts are bounded by add-to-cart counts. -/
+theorem funnel_checkout_le_addToCart (f : Funnel) :
+    f.checkoutStarted ≤ f.addToCart := by
+  exact f.checkout_le_addToCart
+
+/-- Funnel purchases are bounded by checkout starts. -/
+theorem funnel_purchases_le_checkout (f : Funnel) :
+    f.purchases ≤ f.checkoutStarted := by
+  exact f.purchases_le_checkout
+
 /-- Closed set of cases for `ConsentStatus` in the commerce domain model. -/
 inductive ConsentStatus where
   | Granted
@@ -150,6 +205,11 @@ def canRetarget (consent : ConsentStatus) : Prop :=
 /-- States the safety property captured by `denied_consent_cannot_retarget`. -/
 theorem denied_consent_cannot_retarget :
     ¬ canRetarget ConsentStatus.Denied := by
+  simp [canRetarget]
+
+/-- Unknown consent is not enough to retarget. -/
+theorem unknown_consent_cannot_retarget :
+    ¬ canRetarget ConsentStatus.Unknown := by
   simp [canRetarget]
 
 /-- Closed set of cases for `SubscriptionStatus` in the commerce domain model. -/
@@ -169,6 +229,11 @@ theorem unsubscribed_cannot_receive_marketing :
     ¬ canSendMarketingMessage SubscriptionStatus.Unsubscribed := by
   simp [canSendMarketingMessage]
 
+/-- Subscribed customers can receive marketing messages. -/
+theorem subscribed_can_receive_marketing :
+    canSendMarketingMessage SubscriptionStatus.Subscribed := by
+  simp [canSendMarketingMessage]
+
 /-- Data shape for `AttributionCredit`; proof fields record invariants when needed. -/
 structure AttributionCredit where
   campaignId : CampaignId
@@ -180,16 +245,38 @@ def attributionCreditTotal : List AttributionCredit → Money
   | [] => 0
   | c :: rest => c.amount + attributionCreditTotal rest
 
+/-- Every attribution credit in a list belongs to the same order. -/
+def attributionCreditsMatchOrder (order : Order) (credits : List AttributionCredit) : Prop :=
+  ∀ credit : AttributionCredit, credit ∈ credits → credit.orderId = order.id
+
 /-- Data shape for `OrderAttributionLedger`; proof fields record invariants when needed. -/
 structure OrderAttributionLedger where
   order : Order
   credits : List AttributionCredit
   total_credits_le_order_total : attributionCreditTotal credits ≤ order.total
 
+/-- An attribution ledger that also validates every credit against the order id. -/
+structure MatchedOrderAttributionLedger where
+  ledger : OrderAttributionLedger
+  credits_match_order : attributionCreditsMatchOrder ledger.order ledger.credits
+
 /-- States the safety property captured by `attributionLedger_total_le_order_total`. -/
 theorem attributionLedger_total_le_order_total (l : OrderAttributionLedger) :
     attributionCreditTotal l.credits ≤ l.order.total := by
   exact l.total_credits_le_order_total
+
+/-- Matched attribution ledgers expose per-credit order-id consistency. -/
+theorem matchedAttributionLedger_credit_matches_order
+    (l : MatchedOrderAttributionLedger)
+    (credit : AttributionCredit) (hmem : credit ∈ l.ledger.credits) :
+    credit.orderId = l.ledger.order.id := by
+  exact l.credits_match_order credit hmem
+
+/-- Matched attribution ledgers still preserve the total-credit bound. -/
+theorem matchedAttributionLedger_total_le_order_total
+    (l : MatchedOrderAttributionLedger) :
+    attributionCreditTotal l.ledger.credits ≤ l.ledger.order.total := by
+  exact l.ledger.total_credits_le_order_total
 
 /-- Data shape for `ExperimentVariant`; proof fields record invariants when needed. -/
 structure ExperimentVariant where
@@ -214,6 +301,11 @@ structure Experiment where
 theorem experimentVariant_conversions_safe (v : ExperimentVariant) :
     v.conversions ≤ v.visitors := by
   exact v.conversions_le_visitors
+
+/-- Experiment traffic weights add up to exactly 100. -/
+theorem experiment_traffic_total_100 (e : Experiment) :
+    experimentTrafficTotal e.variants = 100 := by
+  exact e.traffic_total_100
 
 
 end CommerceTheory

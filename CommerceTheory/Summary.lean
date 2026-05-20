@@ -57,5 +57,37 @@ theorem opportunity_portfolio_profit_floor_safety
     candidatesMinProfitTotal p.selected ≤ candidatesProfitTotal p.selected := by
   exact opportunityPortfolio_expectedProfit_covers_minProfit p
 
+/-- Fulfillment plans cannot request more than the available stock they allocate. -/
+theorem fulfillment_plan_available_stock_safety (p : FulfillmentPlan) :
+    p.requested ≤ allocationsAvailableTotal p.allocations := by
+  exact fulfillmentPlan_requested_le_availableTotal p
+
+/-- Safe marketplace feed lines publish prices inside their channel price policy. -/
+theorem marketplace_feed_price_policy_safety (f : SafeProductFeedLine) :
+    f.pricePolicy.minPrice ≤ f.price ∧ f.price ≤ f.pricePolicy.maxPrice := by
+  exact f.price_valid
+
+/-- Valid search results are not archived, are in stock, and are margin-safe. -/
+theorem merchandising_search_result_safety (x : ValidSearchResultItem) :
+    x.item.archived = false ∧ x.item.inStock = true ∧ x.item.marginSafe = true := by
+  exact validSearchResult_safe x
+
+/-- Gift-card redemption conserves the original balance across remaining balance and redemption. -/
+theorem gift_card_redemption_conservation (r : GiftCardRedemption) :
+    giftCardBalanceAfterRedeem r + r.amount = r.card.balance := by
+  exact giftCardBalanceAfterRedeem_add_amount_eq_balance r
+
+/-- Strictly ordered webhook streams replay without hitting an ordering rejection. -/
+theorem ordered_webhook_replay_succeeds
+    (s : WebhookOrderingState) (events : List EventEnvelope)
+    (h : streamSequencesStrictlyIncreaseFrom s.lastSequence events) :
+    ∃ next : WebhookOrderingState, replayWebhookStream s events = some next := by
+  exact replayWebhookStream_succeeds_of_ordered s events h
+
+/-- Supplier capacity checks remain bounded by the supplier's configured maximum. -/
+theorem supplier_capacity_safety (capacity : SupplierDailyCapacity) :
+    capacity.ordersAcceptedToday ≤ capacity.supplier.maxDailyOrders := by
+  exact supplierDailyCapacity_accepted_le_supplier_max capacity
+
 
 end CommerceTheory

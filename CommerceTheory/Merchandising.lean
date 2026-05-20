@@ -27,6 +27,16 @@ theorem advertisedPriceAllowed_ge_map
     policy.mapPrice ≤ advertisedPrice := by
   exact h
 
+/-- Brand MAP cannot exceed MSRP. -/
+theorem brandPricingPolicy_map_le_msrp (policy : BrandPricingPolicy) :
+    policy.mapPrice ≤ policy.msrp := by
+  exact policy.map_le_msrp
+
+/-- Advertising exactly at MSRP is always MAP-compliant. -/
+theorem msrp_advertisedPriceAllowed (policy : BrandPricingPolicy) :
+    advertisedPriceAllowed policy policy.msrp := by
+  exact policy.map_le_msrp
+
 /-- Data shape for `BundleComponent`; proof fields record invariants when needed. -/
 structure BundleComponent where
   sku : Sku
@@ -70,10 +80,39 @@ structure AcceptedPromotionSet where
   discount_le_cap : totalDiscount ≤ discountCap
   floor_le_price : profitFloor ≤ resultingPrice
 
+/-- Interprets promotion-stacking policies for a concrete accepted promotion set. -/
+def promotionSetAllowedByPolicy
+    (policy : PromotionStackingPolicy) (promotionCount : Nat)
+    (p : AcceptedPromotionSet) : Prop :=
+  match policy with
+  | PromotionStackingPolicy.Exclusive => promotionCount ≤ 1
+  | PromotionStackingPolicy.Stackable => True
+  | PromotionStackingPolicy.StackableWithCap => p.totalDiscount ≤ p.discountCap
+
 /-- States the safety property captured by `promotionSet_respects_profit_floor`. -/
 theorem promotionSet_respects_profit_floor (p : AcceptedPromotionSet) :
     p.profitFloor ≤ p.resultingPrice := by
   exact p.floor_le_price
+
+/-- Accepted promotion sets respect their configured discount cap. -/
+theorem promotionSet_respects_discount_cap (p : AcceptedPromotionSet) :
+    p.totalDiscount ≤ p.discountCap := by
+  exact p.discount_le_cap
+
+/-- Accepted promotion sets are allowed under the capped-stacking policy. -/
+theorem promotionSet_allowed_with_cap_policy
+    (promotionCount : Nat) (p : AcceptedPromotionSet) :
+    promotionSetAllowedByPolicy
+      PromotionStackingPolicy.StackableWithCap promotionCount p := by
+  exact p.discount_le_cap
+
+/-- Exclusive stacking policy means at most one accepted promotion. -/
+theorem exclusivePromotionPolicy_at_most_one
+    (promotionCount : Nat) (p : AcceptedPromotionSet)
+    (h : promotionSetAllowedByPolicy
+      PromotionStackingPolicy.Exclusive promotionCount p) :
+    promotionCount ≤ 1 := by
+  exact h
 
 /-- Data shape for `SearchResultItem`; proof fields record invariants when needed. -/
 structure SearchResultItem where
@@ -93,6 +132,21 @@ structure ValidSearchResultItem where
 theorem validSearchResult_sellable (x : ValidSearchResultItem) :
     x.item.inStock = true := by
   exact x.sellable
+
+/-- Valid search results exclude archived items. -/
+theorem validSearchResult_not_archived (x : ValidSearchResultItem) :
+    x.item.archived = false := by
+  exact x.not_archived
+
+/-- Valid search results keep only margin-safe items. -/
+theorem validSearchResult_margin_safe (x : ValidSearchResultItem) :
+    x.item.marginSafe = true := by
+  exact x.margin_safe
+
+/-- Compact reusable form of all search-result safety checks. -/
+theorem validSearchResult_safe (x : ValidSearchResultItem) :
+    x.item.archived = false ∧ x.item.inStock = true ∧ x.item.marginSafe = true := by
+  exact ⟨x.not_archived, x.sellable, x.margin_safe⟩
 
 
 end CommerceTheory

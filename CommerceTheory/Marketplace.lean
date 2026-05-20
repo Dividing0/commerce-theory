@@ -63,6 +63,12 @@ theorem listingCanBeAdvertised_implies_active
     listingActive listing := by
   exact h.left
 
+/-- Advertisable listings must also publish positive stock. -/
+theorem listingCanBeAdvertised_implies_in_stock
+    (listing : MarketplaceListing) (h : listingCanBeAdvertised listing) :
+    listingInStock listing := by
+  exact h.right
+
 /-- Data shape for `SyncedMarketplaceListing`; proof fields record invariants when needed. -/
 structure SyncedMarketplaceListing where
   listing : MarketplaceListing
@@ -75,6 +81,16 @@ theorem syncedListing_stock_is_safe (s : SyncedMarketplaceListing) :
     s.listing.publishedStock ≤ availableStock s.stock := by
   exact s.publishedStock_le_available
 
+/-- Synced marketplace listings point at the same SKU as internal stock. -/
+theorem syncedListing_same_sku (s : SyncedMarketplaceListing) :
+    s.listing.sku = s.stock.sku := by
+  exact s.same_sku
+
+/-- Published marketplace stock is also bounded by total internal stock. -/
+theorem syncedListing_publishedStock_le_total (s : SyncedMarketplaceListing) :
+    s.listing.publishedStock ≤ s.stock.total := by
+  exact s.publishedStock_le_available.trans (availableStock_le_total s.stock)
+
 /-- Data shape for `ChannelPricePolicy`; proof fields record invariants when needed. -/
 structure ChannelPricePolicy where
   minPrice : Money
@@ -84,6 +100,20 @@ structure ChannelPricePolicy where
 /-- Computes or checks `validChannelPrice` using the validated data in this module. -/
 def validChannelPrice (policy : ChannelPricePolicy) (price : Money) : Prop :=
   policy.minPrice ≤ price ∧ price ≤ policy.maxPrice
+
+/-- Valid channel prices respect the policy minimum. -/
+theorem validChannelPrice_ge_min
+    (policy : ChannelPricePolicy) (price : Money)
+    (h : validChannelPrice policy price) :
+    policy.minPrice ≤ price := by
+  exact h.left
+
+/-- Valid channel prices respect the policy maximum. -/
+theorem validChannelPrice_le_max
+    (policy : ChannelPricePolicy) (price : Money)
+    (h : validChannelPrice policy price) :
+    price ≤ policy.maxPrice := by
+  exact h.right
 
 /-- Data shape for `SafeProductFeedLine`; proof fields record invariants when needed. -/
 structure SafeProductFeedLine where
@@ -102,6 +132,21 @@ structure SafeProductFeedLine where
 theorem safeFeed_stock_le_available (f : SafeProductFeedLine) :
     f.stock ≤ availableStock f.stockState := by
   exact f.stock_safe
+
+/-- Safe product feed lines preserve SKU identity with the stock source. -/
+theorem safeFeed_same_sku (f : SafeProductFeedLine) :
+    f.sku = f.stockState.sku := by
+  exact f.same_sku
+
+/-- Safe product feed prices respect the channel minimum. -/
+theorem safeFeed_price_ge_min (f : SafeProductFeedLine) :
+    f.pricePolicy.minPrice ≤ f.price := by
+  exact f.price_valid.left
+
+/-- Safe product feed prices respect the channel maximum. -/
+theorem safeFeed_price_le_max (f : SafeProductFeedLine) :
+    f.price ≤ f.pricePolicy.maxPrice := by
+  exact f.price_valid.right
 
 /-- Data shape for `MarketplaceFeeLedger`; proof fields record invariants when needed. -/
 structure MarketplaceFeeLedger where
@@ -138,6 +183,20 @@ theorem marketplaceOrder_payout_le_internal_total (mo : MarketplaceOrder) :
     mo.feeLedger.payout ≤ mo.internalOrder.total := by
   calc
     mo.feeLedger.payout ≤ mo.feeLedger.gross := marketplacePayout_le_gross mo.feeLedger
+    _ = mo.grossFromMarketplace := mo.feeLedger_gross_matches
+    _ = mo.internalOrder.total := mo.gross_matches_internal_total
+
+/-- Marketplace order gross revenue matches the internal order total. -/
+theorem marketplaceOrder_gross_eq_internal_total (mo : MarketplaceOrder) :
+    mo.grossFromMarketplace = mo.internalOrder.total := by
+  exact mo.gross_matches_internal_total
+
+/-- Marketplace payout plus marketplace fee recovers the internal order total. -/
+theorem marketplaceOrder_payout_plus_fee_eq_internal_total (mo : MarketplaceOrder) :
+    mo.feeLedger.payout + mo.feeLedger.fee = mo.internalOrder.total := by
+  calc
+    mo.feeLedger.payout + mo.feeLedger.fee = mo.feeLedger.gross :=
+      marketplacePayout_plus_fee_eq_gross mo.feeLedger
     _ = mo.grossFromMarketplace := mo.feeLedger_gross_matches
     _ = mo.internalOrder.total := mo.gross_matches_internal_total
 

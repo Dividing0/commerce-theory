@@ -31,16 +31,52 @@ theorem supplierCanReceiveOrders_implies_active
     supplier.active = true := by
   exact h.left
 
+/-- Suppliers that can receive orders are not suspended. -/
+theorem supplierCanReceiveOrders_implies_not_suspended
+    (supplier : DropshipSupplier) (h : supplierCanReceiveOrders supplier) :
+    supplier.suspended = false := by
+  exact h.right
+
 /-- Data shape for `SupplierDailyCapacity`; proof fields record invariants when needed. -/
 structure SupplierDailyCapacity where
   supplier : DropshipSupplier
   dailyOrderCapacity : Nat
   ordersAcceptedToday : Nat
   accepted_le_capacity : ordersAcceptedToday ≤ dailyOrderCapacity
+  capacity_le_supplier_max : dailyOrderCapacity ≤ supplier.maxDailyOrders
 
 /-- Computes or checks `canAddSupplierOrders` using the validated data in this module. -/
 def canAddSupplierOrders (capacity : SupplierDailyCapacity) (newOrders : Nat) : Prop :=
   capacity.ordersAcceptedToday + newOrders ≤ capacity.dailyOrderCapacity
+
+/-- Accepted supplier orders are bounded by the configured daily capacity. -/
+theorem supplierDailyCapacity_accepted_le_capacity (capacity : SupplierDailyCapacity) :
+    capacity.ordersAcceptedToday ≤ capacity.dailyOrderCapacity := by
+  exact capacity.accepted_le_capacity
+
+/-- The modeled daily capacity is bounded by the supplier's own maximum. -/
+theorem supplierDailyCapacity_le_supplier_max (capacity : SupplierDailyCapacity) :
+    capacity.dailyOrderCapacity ≤ capacity.supplier.maxDailyOrders := by
+  exact capacity.capacity_le_supplier_max
+
+/-- Accepted supplier orders are bounded by the supplier's maximum daily orders. -/
+theorem supplierDailyCapacity_accepted_le_supplier_max (capacity : SupplierDailyCapacity) :
+    capacity.ordersAcceptedToday ≤ capacity.supplier.maxDailyOrders := by
+  exact capacity.accepted_le_capacity.trans capacity.capacity_le_supplier_max
+
+/-- Adding supplier orders keeps the total within the modeled daily capacity. -/
+theorem canAddSupplierOrders_keeps_capacity
+    (capacity : SupplierDailyCapacity) (newOrders : Nat)
+    (h : canAddSupplierOrders capacity newOrders) :
+    capacity.ordersAcceptedToday + newOrders ≤ capacity.dailyOrderCapacity := by
+  exact h
+
+/-- Adding supplier orders also keeps the total within the supplier maximum. -/
+theorem canAddSupplierOrders_keeps_supplier_max
+    (capacity : SupplierDailyCapacity) (newOrders : Nat)
+    (h : canAddSupplierOrders capacity newOrders) :
+    capacity.ordersAcceptedToday + newOrders ≤ capacity.supplier.maxDailyOrders := by
+  exact h.trans capacity.capacity_le_supplier_max
 
 /-- Data shape for `DropshipOffer`; proof fields record invariants when needed. -/
 structure DropshipOffer where
@@ -65,6 +101,23 @@ theorem dropshipOfferCanBeSold_implies_in_stock
     0 < offer.availableQty := by
   exact h.right.right
 
+/-- Sellable dropship offers come from suppliers that can receive orders. -/
+theorem dropshipOfferCanBeSold_implies_supplier_can_receive_orders
+    (offer : DropshipOffer) (h : dropshipOfferCanBeSold offer) :
+    supplierCanReceiveOrders offer.supplier := by
+  exact h.left
+
+/-- Sellable dropship offers are active. -/
+theorem dropshipOfferCanBeSold_implies_active
+    (offer : DropshipOffer) (h : dropshipOfferCanBeSold offer) :
+    offer.active = true := by
+  exact h.right.left
+
+/-- Dropship offer currency is the supplier currency. -/
+theorem dropshipOffer_currency_matches_supplier (offer : DropshipOffer) :
+    offer.currency = offer.supplier.currency := by
+  exact offer.currency_matches_supplier
+
 /-- Closed set of cases for `SupplierReservationStatus` in the commerce domain model. -/
 inductive SupplierReservationStatus where
   | Requested
@@ -85,6 +138,16 @@ structure SupplierReservation where
 /-- Computes or checks `reservationConfirmed` using the validated data in this module. -/
 def reservationConfirmed (r : SupplierReservation) : Prop :=
   r.status = SupplierReservationStatus.Confirmed
+
+/-- Supplier reservations point at the same supplier as their offer. -/
+theorem supplierReservation_same_supplier (r : SupplierReservation) :
+    r.offer.supplier.id = r.supplier.id := by
+  exact r.same_supplier
+
+/-- Supplier reservations cannot exceed the offer's available quantity. -/
+theorem supplierReservation_quantity_safe (r : SupplierReservation) :
+    r.quantity ≤ r.offer.availableQty := by
+  exact r.quantity_le_available
 
 /-- Data shape for `DropshipLine`; proof fields record invariants when needed. -/
 structure DropshipLine where
@@ -140,6 +203,16 @@ theorem reservedDropshipLine_has_confirmed_reservation (r : ReservedDropshipLine
     reservationConfirmed r.reservation := by
   unfold reservationConfirmed
   exact r.confirmed
+
+/-- Reserved dropship lines use the same offer as their supplier reservation. -/
+theorem reservedDropshipLine_same_offer (r : ReservedDropshipLine) :
+    r.reservation.offer = r.line.offer := by
+  exact r.same_offer
+
+/-- Reserved dropship lines use the same quantity as their supplier reservation. -/
+theorem reservedDropshipLine_same_quantity (r : ReservedDropshipLine) :
+    r.reservation.quantity = r.line.quantity := by
+  exact r.same_quantity
 
 /-- Computes or checks `dropshipSaleNetTotal` using the validated data in this module. -/
 def dropshipSaleNetTotal : List DropshipLine → Money
@@ -205,6 +278,26 @@ theorem dropshipPO_total_le_customerNet_plus_supplierShipping (po : DropshipPurc
   have hcost := dropshipSupplierCostTotal_le_saleNetTotal po.lines
   exact Nat.add_le_add_right hcost po.quote.price
 
+/-- Purchase-order shipping quotes must belong to the PO supplier. -/
+theorem dropshipPO_quote_supplier_matches (po : DropshipPurchaseOrder) :
+    po.quote.supplierId = po.supplier.id := by
+  exact po.quote_supplier_matches
+
+/-- Purchase-order line weight fits within the supplier shipping quote. -/
+theorem dropshipPO_weight_safe (po : DropshipPurchaseOrder) :
+    dropshipWeightTotal po.lines ≤ po.quote.maxWeight := by
+  exact po.weight_ok
+
+/-- Purchase-order totals equal supplier line costs plus supplier shipping. -/
+theorem dropshipPO_total_eq_supplierCost_plus_shipping (po : DropshipPurchaseOrder) :
+    po.total = dropshipSupplierCostTotal po.lines + po.quote.price := by
+  exact po.total_correct
+
+/-- Purchase-order quote can ship the PO's total line weight. -/
+theorem dropshipPO_quote_can_ship (po : DropshipPurchaseOrder) :
+    dropshipShippingQuoteCanShip po.quote (dropshipWeightTotal po.lines) := by
+  exact po.weight_ok
+
 /-- Computes or checks `CanDropshipPOTransition` using the validated data in this module. -/
 def CanDropshipPOTransition : DropshipPOStatus → DropshipPOStatus → Prop
   | DropshipPOStatus.Created, DropshipPOStatus.Submitted => True
@@ -226,6 +319,13 @@ theorem dropshipPO_cancelled_has_no_outgoing (next : DropshipPOStatus) :
 def dropshipSLASafe (supplier : DropshipSupplier) (quote : DropshipShippingQuote)
     (promisedDays : Days) : Prop :=
   supplier.processingDays + quote.carrierDays ≤ promisedDays
+
+/-- SLA safety exposes the promised-days upper bound. -/
+theorem dropshipSLASafe_days_le_promise
+    (supplier : DropshipSupplier) (quote : DropshipShippingQuote)
+    (promisedDays : Days) (h : dropshipSLASafe supplier quote promisedDays) :
+    supplier.processingDays + quote.carrierDays ≤ promisedDays := by
+  exact h
 
 /-- Data shape for `DropshipFulfillment`; proof fields record invariants when needed. -/
 structure DropshipFulfillment where
@@ -259,6 +359,21 @@ structure DropshipReturnRequest where
 theorem dropshipReturn_refund_safe (r : DropshipReturnRequest) :
     r.customerRefund ≤ dropshipLineCustomerNet r.line := by
   exact r.refund_le_customerNet
+
+/-- Dropship return quantities cannot exceed the sold quantity. -/
+theorem dropshipReturn_quantity_safe (r : DropshipReturnRequest) :
+    r.returnQty ≤ r.line.quantity := by
+  exact r.returnQty_le_soldQty
+
+/-- Dropship return supplier credits cannot exceed the supplier cost. -/
+theorem dropshipReturn_supplierCredit_safe (r : DropshipReturnRequest) :
+    r.supplierCredit ≤ dropshipLineSupplierCost r.line := by
+  exact r.supplierCredit_le_supplierCost
+
+/-- Dropship returns require a supplier that accepts returns. -/
+theorem dropshipReturn_supplier_accepts_returns (r : DropshipReturnRequest) :
+    r.line.offer.supplier.acceptsReturns = true := by
+  exact r.supplier_accepts_returns
 
 
 end CommerceTheory
