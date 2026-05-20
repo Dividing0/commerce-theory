@@ -61,7 +61,9 @@ constructors, and tests.
 - `CommerceTheory/ImplicitInvariants.lean`: cross-module validated wrappers for
   assumptions such as bounded coupons, payment/order matching, event-stream
   cursors, sellable catalog entries, publishable feed lines, experiment traffic,
-  and sourceable distributor products.
+  sourceable distributor products, accounting projections, wholesale checkout
+  authorization, fresh competitor benchmarks, currency conversion, gift-card
+  expiry, chargebacks, replenishment forecasts, and orderable supplier quality.
 - `CommerceTheory/PostPurchase.lean`: subscriptions, gift cards, chargebacks, and
   cashflow plans.
 - `CommerceTheory/Forecasting.lean`: forecast confidence, replenishment gates,

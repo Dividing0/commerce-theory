@@ -233,4 +233,328 @@ theorem sourceableDistributorProduct_available
     source.units ≤ source.product.availableQty := by
   exact source.can_source.right.right
 
+/-! ### Second-pass joins across the remaining modules -/
+
+/-- A bounded coupon application that also passed the fraud policy's usage limit. -/
+structure FraudCheckedCouponApplication where
+  application : BoundedCouponApplication
+  policy : FraudPolicy
+  uses_allowed : couponUsesAllowed policy application.usesBefore
+
+/-- Fraud-checked coupon use stays inside the fraud policy cap. -/
+theorem fraudCheckedCoupon_uses_allowed
+    (application : FraudCheckedCouponApplication) :
+    application.application.usesBefore ≤ application.policy.maxCouponUses := by
+  exact application.uses_allowed
+
+/-- Fraud-checked coupon use still stays below the coupon's own max-use counter. -/
+theorem fraudCheckedCoupon_below_coupon_max
+    (application : FraudCheckedCouponApplication) :
+    application.application.usesBefore < application.application.coupon.maxUses := by
+  exact application.application.applicable.right
+
+/-- A payment-capture journal tied to the captured payment amount it projects. -/
+structure CapturedPaymentJournalProjection where
+  accounts : AccountingAccounts
+  payment : CapturedPayment
+  journal : BalancedJournalEntry
+  journal_correct : journal = paymentCapturedJournal accounts payment.amount
+
+/-- Payment-capture projections are balanced. -/
+theorem capturedPaymentJournalProjection_balanced
+    (projection : CapturedPaymentJournalProjection) :
+    debitTotal projection.journal.postings =
+      creditTotal projection.journal.postings := by
+  rw [projection.journal_correct]
+  exact paymentCapturedJournal_balanced projection.accounts projection.payment.amount
+
+/-- Payment-capture projections debit cash for the captured amount. -/
+theorem capturedPaymentJournalProjection_debit_amount
+    (projection : CapturedPaymentJournalProjection) :
+    debitTotal projection.journal.postings = projection.payment.amount := by
+  rw [projection.journal_correct]
+  exact paymentCapturedJournal_debitTotal projection.accounts projection.payment.amount
+
+/-- Payment-capture projections credit deferred revenue for the captured amount. -/
+theorem capturedPaymentJournalProjection_credit_amount
+    (projection : CapturedPaymentJournalProjection) :
+    creditTotal projection.journal.postings = projection.payment.amount := by
+  rw [projection.journal_correct]
+  exact paymentCapturedJournal_creditTotal projection.accounts projection.payment.amount
+
+/-- A refund journal tied to a refundable ledger amount. -/
+structure RefundJournalProjection where
+  accounts : AccountingAccounts
+  ledger : PaymentLedger
+  amount : Money
+  refundable : canRefund ledger amount
+  journal : BalancedJournalEntry
+  journal_correct : journal = refundIssuedJournal accounts amount
+
+/-- Refund journal projections are balanced. -/
+theorem refundJournalProjection_balanced
+    (projection : RefundJournalProjection) :
+    debitTotal projection.journal.postings =
+      creditTotal projection.journal.postings := by
+  rw [projection.journal_correct]
+  exact refundIssuedJournal_balanced projection.accounts projection.amount
+
+/-- Refund journal projections debit refunds for exactly the refundable amount. -/
+theorem refundJournalProjection_debit_amount
+    (projection : RefundJournalProjection) :
+    debitTotal projection.journal.postings = projection.amount := by
+  rw [projection.journal_correct]
+  exact refundIssuedJournal_debitTotal projection.accounts projection.amount
+
+/-- Refund journal projections credit cash for exactly the refundable amount. -/
+theorem refundJournalProjection_credit_amount
+    (projection : RefundJournalProjection) :
+    creditTotal projection.journal.postings = projection.amount := by
+  rw [projection.journal_correct]
+  exact refundIssuedJournal_creditTotal projection.accounts projection.amount
+
+/-- Refund journal projections cannot exceed the remaining refundable balance. -/
+theorem refundJournalProjection_amount_le_remaining
+    (projection : RefundJournalProjection) :
+    projection.amount ≤ remainingRefundAmount projection.ledger := by
+  exact canRefund_amount_le_remaining
+    projection.ledger projection.amount projection.refundable
+
+/-- A synced marketplace listing that is also active and in stock for advertising. -/
+structure AdvertisableSyncedMarketplaceListing where
+  synced : SyncedMarketplaceListing
+  can_advertise : listingCanBeAdvertised synced.listing
+
+/-- Advertisable synced listings are active. -/
+theorem advertisableSyncedListing_active
+    (listing : AdvertisableSyncedMarketplaceListing) :
+    listing.synced.listing.status = ListingStatus.Active := by
+  exact listing.can_advertise.left
+
+/-- Advertisable synced listings publish positive stock. -/
+theorem advertisableSyncedListing_in_stock
+    (listing : AdvertisableSyncedMarketplaceListing) :
+    0 < listing.synced.listing.publishedStock := by
+  exact listing.can_advertise.right
+
+/-- Advertisable synced listings imply positive internal available stock. -/
+theorem advertisableSyncedListing_available_positive
+    (listing : AdvertisableSyncedMarketplaceListing) :
+    0 < availableStock listing.synced.stock := by
+  exact lt_of_lt_of_le listing.can_advertise.right
+    listing.synced.publishedStock_le_available
+
+/-- A wholesale checkout authorized by customer eligibility, terms, and credit limit. -/
+structure WholesaleCreditCheckout where
+  account : WholesaleCreditAccount
+  lines : List WholesaleLine
+  terms : PaymentTerms
+  orderTotal : Money
+  total_correct : orderTotal = wholesaleOrderNetTotal lines
+  terms_allowed : paymentTermsAllowed TradeMode.Wholesale terms
+  credit_ok : canPlaceWholesaleCreditOrder account orderTotal
+
+/-- Wholesale credit checkouts belong to approved wholesale customers. -/
+theorem wholesaleCreditCheckout_customer_can_buy
+    (checkout : WholesaleCreditCheckout) :
+    customerCanBuyWholesale checkout.account.customer := by
+  exact checkout.account.customer_can_buy_wholesale
+
+/-- Wholesale credit checkouts keep outstanding credit inside the configured limit. -/
+theorem wholesaleCreditCheckout_credit_safe
+    (checkout : WholesaleCreditCheckout) :
+    checkout.account.outstanding + checkout.orderTotal ≤ checkout.account.creditLimit := by
+  exact checkout.credit_ok
+
+/-- Wholesale credit checkouts keep the computed net total inside the credit limit. -/
+theorem wholesaleCreditCheckout_computed_total_credit_safe
+    (checkout : WholesaleCreditCheckout) :
+    checkout.account.outstanding + wholesaleOrderNetTotal checkout.lines ≤
+      checkout.account.creditLimit := by
+  rw [← checkout.total_correct]
+  exact checkout.credit_ok
+
+/-- Wholesale checkout net totals remain bounded by their retail-equivalent totals. -/
+theorem wholesaleCreditCheckout_net_le_retail_equivalent
+    (checkout : WholesaleCreditCheckout) :
+    wholesaleOrderNetTotal checkout.lines ≤ wholesaleRetailEquivalentTotal checkout.lines := by
+  exact wholesaleOrderNetTotal_le_retailEquivalentTotal checkout.lines
+
+/-- A competitor benchmark whose best offer is fresh enough and trusted for automation. -/
+structure TrustedFreshCompetitorBenchmark where
+  benchmark : CompetitorPriceBenchmark
+  now : Timestamp
+  maxAge : Timestamp
+  trust : TrustLevel
+  fresh_best_offer : priceSnapshotFresh now maxAge benchmark.bestOffer.observedAt
+  trust_allows_auto : trustAllowsAutoRepricing trust
+
+/-- Trusted fresh benchmarks expose that the best offer was not observed in the future. -/
+theorem trustedFreshBenchmark_observedAt_le_now
+    (benchmark : TrustedFreshCompetitorBenchmark) :
+    benchmark.benchmark.bestOffer.observedAt ≤ benchmark.now := by
+  exact benchmark.fresh_best_offer.left
+
+/-- Trusted fresh benchmarks expose that the best offer is within the accepted age. -/
+theorem trustedFreshBenchmark_age_le_maxAge
+    (benchmark : TrustedFreshCompetitorBenchmark) :
+    benchmark.now - benchmark.benchmark.bestOffer.observedAt ≤ benchmark.maxAge := by
+  exact benchmark.fresh_best_offer.right
+
+/-- Trusted fresh benchmarks keep the usual relevance proof for the best offer. -/
+theorem trustedFreshBenchmark_best_offer_relevant
+    (benchmark : TrustedFreshCompetitorBenchmark) :
+    competitorOfferRelevant
+      benchmark.benchmark.bestOffer benchmark.benchmark.sku benchmark.benchmark.currency := by
+  exact benchmark.benchmark.bestOffer_relevant
+
+/-- A competitor-aware offer whose advertised price also respects the brand MAP policy. -/
+structure MapCompliantCompetitorAwareOffer where
+  offer : CompetitorAwareDropshipOffer
+  policy : BrandPricingPolicy
+  advertised_ok : advertisedPriceAllowed policy offer.offer.saleUnitPrice
+
+/-- MAP-compliant competitor-aware offers keep the advertised price at or above MAP. -/
+theorem mapCompliantCompetitorAwareOffer_map_safe
+    (offer : MapCompliantCompetitorAwareOffer) :
+    offer.policy.mapPrice ≤ offer.offer.offer.saleUnitPrice := by
+  exact offer.advertised_ok
+
+/-- MAP-compliant competitor-aware offers retain the existing profit guarantee. -/
+theorem mapCompliantCompetitorAwareOffer_profit_safe
+    (offer : MapCompliantCompetitorAwareOffer) :
+    offer.offer.minProfit ≤
+      profitAtOfferPrice offer.offer.offer.saleUnitPrice offer.offer.discount offer.offer.costs := by
+  exact competitorAwareDropshipOffer_profit_guaranteed offer.offer
+
+/-- Runtime-currency conversion evidence for amounts converted through a fresh FX rate. -/
+structure FreshCurrencyConversion where
+  sourceAmount : MoneyAmount
+  rate : ExchangeRate
+  targetAmount : MoneyAmount
+  now : Timestamp
+  maxAge : Timestamp
+  source_matches_rate : sourceAmount.currency = rate.source
+  target_matches_rate : targetAmount.currency = rate.target
+  amount_correct : targetAmount.amount = convertMoneyFloor sourceAmount.amount rate
+  rate_fresh : fxQuoteFresh now maxAge rate
+
+/-- Fresh currency conversions expose their source currency check. -/
+theorem freshCurrencyConversion_source_matches
+    (conversion : FreshCurrencyConversion) :
+    conversion.sourceAmount.currency = conversion.rate.source := by
+  exact conversion.source_matches_rate
+
+/-- Fresh currency conversions expose their target currency check. -/
+theorem freshCurrencyConversion_target_matches
+    (conversion : FreshCurrencyConversion) :
+    conversion.targetAmount.currency = conversion.rate.target := by
+  exact conversion.target_matches_rate
+
+/-- Fresh currency conversions compute the target amount from the rate. -/
+theorem freshCurrencyConversion_amount_correct
+    (conversion : FreshCurrencyConversion) :
+    conversion.targetAmount.amount =
+      convertMoneyFloor conversion.sourceAmount.amount conversion.rate := by
+  exact conversion.amount_correct
+
+/-- Fresh currency conversions use a rate that was not observed in the future. -/
+theorem freshCurrencyConversion_rate_observedAt_le_now
+    (conversion : FreshCurrencyConversion) :
+    conversion.rate.observedAt ≤ conversion.now := by
+  exact conversion.rate_fresh.left
+
+/-- Fresh currency conversions use a rate within the accepted age window. -/
+theorem freshCurrencyConversion_rate_age_le_maxAge
+    (conversion : FreshCurrencyConversion) :
+    conversion.now - conversion.rate.observedAt ≤ conversion.maxAge := by
+  exact conversion.rate_fresh.right
+
+/-- A gift-card redemption paired with the timestamp at which the card was valid. -/
+structure ValidGiftCardRedemptionAt where
+  now : Timestamp
+  redemption : GiftCardRedemption
+  not_expired : giftCardValidAt now redemption.card
+
+/-- Time-valid gift-card redemptions have not passed expiry. -/
+theorem validGiftCardRedemptionAt_not_expired
+    (redemption : ValidGiftCardRedemptionAt) :
+    redemption.now ≤ redemption.redemption.card.expiresAt := by
+  exact redemption.not_expired
+
+/-- Time-valid gift-card redemptions still conserve card balance. -/
+theorem validGiftCardRedemptionAt_balance_conservation
+    (redemption : ValidGiftCardRedemptionAt) :
+    giftCardBalanceAfterRedeem redemption.redemption + redemption.redemption.amount =
+      redemption.redemption.card.balance := by
+  exact giftCardBalanceAfterRedeem_add_amount_eq_balance redemption.redemption
+
+/-- A chargeback linked to the captured payment amount it disputes. -/
+structure ChargebackForCapturedPayment where
+  payment : CapturedPayment
+  chargeback : Chargeback
+  payment_amount_matches : chargeback.paymentAmount = payment.amount
+
+/-- Chargebacks linked to captured payments cannot exceed the captured amount. -/
+theorem chargebackForCapturedPayment_amount_safe
+    (chargeback : ChargebackForCapturedPayment) :
+    chargeback.chargeback.chargebackAmount ≤ chargeback.payment.amount := by
+  rw [← chargeback.payment_amount_matches]
+  exact chargeback.chargeback.amount_le_payment
+
+/-- Forecasts suitable for automatic replenishment. -/
+def demandForecastActionable (forecast : DemandForecast) : Prop :=
+  confidenceAllowsAutoReplenish forecast.confidence ∧
+    0 < forecast.expectedUnits ∧ 0 < forecast.horizonDays
+
+/-- A demand forecast with all gates needed for automatic replenishment. -/
+structure ActionableDemandForecast where
+  forecast : DemandForecast
+  actionable : demandForecastActionable forecast
+
+/-- Actionable forecasts have enough confidence for automatic replenishment. -/
+theorem actionableDemandForecast_confidence_allows
+    (forecast : ActionableDemandForecast) :
+    confidenceAllowsAutoReplenish forecast.forecast.confidence := by
+  exact forecast.actionable.left
+
+/-- Actionable forecasts predict positive demand. -/
+theorem actionableDemandForecast_expectedUnits_positive
+    (forecast : ActionableDemandForecast) :
+    0 < forecast.forecast.expectedUnits := by
+  exact forecast.actionable.right.left
+
+/-- Actionable forecasts use a positive planning horizon. -/
+theorem actionableDemandForecast_horizon_positive
+    (forecast : ActionableDemandForecast) :
+    0 < forecast.forecast.horizonDays := by
+  exact forecast.actionable.right.right
+
+/-- Supplier quality that is both policy-approved and orderable right now. -/
+structure ApprovedOrderableSupplierQuality where
+  quality : ApprovedSupplierQuality
+  can_receive_orders : supplierCanReceiveOrders quality.supplier
+
+/-- Approved orderable suppliers satisfy all quality thresholds. -/
+theorem approvedOrderableSupplierQuality_quality_ok
+    (supplier : ApprovedOrderableSupplierQuality) :
+    supplier.quality.metrics.defectRateBps ≤ supplier.quality.policy.maxDefectRateBps ∧
+      supplier.quality.metrics.lateShipmentRateBps ≤
+        supplier.quality.policy.maxLateShipmentRateBps ∧
+      supplier.quality.metrics.cancellationRateBps ≤
+        supplier.quality.policy.maxCancellationRateBps := by
+  exact approvedSupplier_quality_ok supplier.quality
+
+/-- Approved orderable suppliers are active. -/
+theorem approvedOrderableSupplierQuality_active
+    (supplier : ApprovedOrderableSupplierQuality) :
+    supplier.quality.supplier.active = true := by
+  exact supplier.can_receive_orders.left
+
+/-- Approved orderable suppliers are not suspended. -/
+theorem approvedOrderableSupplierQuality_not_suspended
+    (supplier : ApprovedOrderableSupplierQuality) :
+    supplier.quality.supplier.suspended = false := by
+  exact supplier.can_receive_orders.right
+
 end CommerceTheory

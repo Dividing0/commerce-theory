@@ -128,6 +128,125 @@ theorem sourceable_distributor_product_safety
       source.units ≤ source.product.availableQty := by
   exact ⟨source.can_source.left, source.can_source.right.left, source.can_source.right.right⟩
 
+/-- Fraud-checked coupon applications satisfy both coupon and fraud-policy usage caps. -/
+theorem fraud_checked_coupon_application_safety
+    (application : FraudCheckedCouponApplication) :
+    application.application.usesBefore ≤ application.policy.maxCouponUses ∧
+      application.application.usesBefore < application.application.coupon.maxUses := by
+  exact ⟨application.uses_allowed, application.application.applicable.right⟩
+
+/-- Captured-payment journal projections balance and use the captured amount on both sides. -/
+theorem captured_payment_journal_projection_safety
+    (projection : CapturedPaymentJournalProjection) :
+    debitTotal projection.journal.postings = projection.payment.amount ∧
+      creditTotal projection.journal.postings = projection.payment.amount ∧
+      debitTotal projection.journal.postings =
+        creditTotal projection.journal.postings := by
+  exact ⟨capturedPaymentJournalProjection_debit_amount projection,
+    capturedPaymentJournalProjection_credit_amount projection,
+    capturedPaymentJournalProjection_balanced projection⟩
+
+/-- Refund journal projections balance, use the refund amount, and fit remaining balance. -/
+theorem refund_journal_projection_safety
+    (projection : RefundJournalProjection) :
+    debitTotal projection.journal.postings = projection.amount ∧
+      creditTotal projection.journal.postings = projection.amount ∧
+      debitTotal projection.journal.postings =
+        creditTotal projection.journal.postings ∧
+      projection.amount ≤ remainingRefundAmount projection.ledger := by
+  exact ⟨refundJournalProjection_debit_amount projection,
+    refundJournalProjection_credit_amount projection,
+    refundJournalProjection_balanced projection,
+    refundJournalProjection_amount_le_remaining projection⟩
+
+/-- Advertisable synced listings are active, publish stock, and have source stock available. -/
+theorem advertisable_synced_listing_safety
+    (listing : AdvertisableSyncedMarketplaceListing) :
+    listing.synced.listing.status = ListingStatus.Active ∧
+      0 < listing.synced.listing.publishedStock ∧
+      0 < availableStock listing.synced.stock := by
+  exact ⟨advertisableSyncedListing_active listing,
+    advertisableSyncedListing_in_stock listing,
+    advertisableSyncedListing_available_positive listing⟩
+
+/-- Wholesale credit checkouts prove customer eligibility, credit safety, and price bounds. -/
+theorem wholesale_credit_checkout_safety
+    (checkout : WholesaleCreditCheckout) :
+    customerCanBuyWholesale checkout.account.customer ∧
+      checkout.account.outstanding + checkout.orderTotal ≤ checkout.account.creditLimit ∧
+      wholesaleOrderNetTotal checkout.lines ≤ wholesaleRetailEquivalentTotal checkout.lines := by
+  exact ⟨wholesaleCreditCheckout_customer_can_buy checkout,
+    wholesaleCreditCheckout_credit_safe checkout,
+    wholesaleCreditCheckout_net_le_retail_equivalent checkout⟩
+
+/-- Trusted fresh competitor benchmarks are relevant, fresh, and allowed for repricing. -/
+theorem trusted_fresh_competitor_benchmark_safety
+    (benchmark : TrustedFreshCompetitorBenchmark) :
+    benchmark.benchmark.bestOffer.observedAt ≤ benchmark.now ∧
+      benchmark.now - benchmark.benchmark.bestOffer.observedAt ≤ benchmark.maxAge ∧
+      competitorOfferRelevant
+        benchmark.benchmark.bestOffer benchmark.benchmark.sku benchmark.benchmark.currency ∧
+      trustAllowsAutoRepricing benchmark.trust := by
+  exact ⟨benchmark.fresh_best_offer.left, benchmark.fresh_best_offer.right,
+    benchmark.benchmark.bestOffer_relevant, benchmark.trust_allows_auto⟩
+
+/-- MAP-compliant competitor-aware offers retain both MAP and profit guarantees. -/
+theorem map_compliant_competitor_offer_safety
+    (offer : MapCompliantCompetitorAwareOffer) :
+    offer.policy.mapPrice ≤ offer.offer.offer.saleUnitPrice ∧
+      offer.offer.minProfit ≤
+        profitAtOfferPrice offer.offer.offer.saleUnitPrice offer.offer.discount offer.offer.costs := by
+  exact ⟨offer.advertised_ok, competitorAwareDropshipOffer_profit_guaranteed offer.offer⟩
+
+/-- Fresh currency conversions prove source/target currency, computed amount, and quote freshness. -/
+theorem fresh_currency_conversion_safety
+    (conversion : FreshCurrencyConversion) :
+    conversion.sourceAmount.currency = conversion.rate.source ∧
+      conversion.targetAmount.currency = conversion.rate.target ∧
+      conversion.targetAmount.amount =
+        convertMoneyFloor conversion.sourceAmount.amount conversion.rate ∧
+      conversion.rate.observedAt ≤ conversion.now ∧
+      conversion.now - conversion.rate.observedAt ≤ conversion.maxAge := by
+  exact ⟨conversion.source_matches_rate, conversion.target_matches_rate,
+    conversion.amount_correct, conversion.rate_fresh.left, conversion.rate_fresh.right⟩
+
+/-- Time-valid gift-card redemptions prove expiry safety and balance conservation. -/
+theorem valid_gift_card_redemption_at_safety
+    (redemption : ValidGiftCardRedemptionAt) :
+    redemption.now ≤ redemption.redemption.card.expiresAt ∧
+      giftCardBalanceAfterRedeem redemption.redemption + redemption.redemption.amount =
+        redemption.redemption.card.balance := by
+  exact ⟨redemption.not_expired,
+    giftCardBalanceAfterRedeem_add_amount_eq_balance redemption.redemption⟩
+
+/-- Chargebacks linked to captured payments cannot exceed the captured amount. -/
+theorem chargeback_for_captured_payment_safety
+    (chargeback : ChargebackForCapturedPayment) :
+    chargeback.chargeback.chargebackAmount ≤ chargeback.payment.amount := by
+  exact chargebackForCapturedPayment_amount_safe chargeback
+
+/-- Actionable demand forecasts have confidence, positive demand, and a positive horizon. -/
+theorem actionable_demand_forecast_safety
+    (forecast : ActionableDemandForecast) :
+    confidenceAllowsAutoReplenish forecast.forecast.confidence ∧
+      0 < forecast.forecast.expectedUnits ∧
+      0 < forecast.forecast.horizonDays := by
+  exact forecast.actionable
+
+/-- Approved orderable suppliers satisfy quality thresholds and are active/not suspended. -/
+theorem approved_orderable_supplier_quality_safety
+    (supplier : ApprovedOrderableSupplierQuality) :
+    supplier.quality.metrics.defectRateBps ≤ supplier.quality.policy.maxDefectRateBps ∧
+      supplier.quality.metrics.lateShipmentRateBps ≤
+        supplier.quality.policy.maxLateShipmentRateBps ∧
+      supplier.quality.metrics.cancellationRateBps ≤
+        supplier.quality.policy.maxCancellationRateBps ∧
+      supplier.quality.supplier.active = true ∧
+      supplier.quality.supplier.suspended = false := by
+  exact ⟨supplier.quality.defect_ok, supplier.quality.late_ok,
+    supplier.quality.cancellation_ok, supplier.can_receive_orders.left,
+    supplier.can_receive_orders.right⟩
+
 /-- Valid search results are not archived, are in stock, and are margin-safe. -/
 theorem merchandising_search_result_safety (x : ValidSearchResultItem) :
     x.item.archived = false ∧ x.item.inStock = true ∧ x.item.marginSafe = true := by
