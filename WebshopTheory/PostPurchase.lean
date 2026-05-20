@@ -57,7 +57,7 @@ def giftCardBalanceAfterRedeem (r : GiftCardRedemption) : Money :=
 theorem giftCardBalanceAfterRedeem_le_balance (r : GiftCardRedemption) :
     giftCardBalanceAfterRedeem r ≤ r.card.balance := by
   unfold giftCardBalanceAfterRedeem
-  omega
+  exact Nat.sub_le r.card.balance r.amount
 
 /-- Data shape for `Chargeback`; proof fields record invariants when needed. -/
 structure Chargeback where

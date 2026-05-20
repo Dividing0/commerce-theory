@@ -41,14 +41,13 @@ def lineWeightTotal (line : CartLine) : Weight :=
 theorem lineNetTotal_le_grossTotal (line : CartLine) :
     lineNetTotal line ≤ lineGrossTotal line := by
   unfold lineNetTotal
-  omega
+  exact Nat.sub_le (lineGrossTotal line) line.discount
 
 /-- States the safety property captured by `lineNet_plus_discount_eq_gross`. -/
 theorem lineNet_plus_discount_eq_gross (line : CartLine) :
     lineNetTotal line + line.discount = lineGrossTotal line := by
   unfold lineNetTotal
-  have h := line.discount_le_gross
-  omega
+  exact Nat.sub_add_cancel line.discount_le_gross
 
 /-- States the safety property captured by `lineCost_le_gross_if_unit_cost_le_price`. -/
 theorem lineCost_le_gross_if_unit_cost_le_price
@@ -92,8 +91,7 @@ theorem cartNetTotal_le_grossTotal (items : List CartLine) :
   | cons line rest ih =>
       have hline : lineNetTotal line ≤ lineGrossTotal line :=
         lineNetTotal_le_grossTotal line
-      simp [cartNetTotal, cartGrossTotal]
-      omega
+      simpa [cartNetTotal, cartGrossTotal] using Nat.add_le_add hline ih
 
 /-- Data shape for `Coupon`; proof fields record invariants when needed. -/
 structure Coupon where
@@ -120,7 +118,7 @@ def subtotalAfterCouponAmount (subtotal couponAmount : Money) : Money :=
 theorem subtotalAfterCouponAmount_le_subtotal (subtotal couponAmount : Money) :
     subtotalAfterCouponAmount subtotal couponAmount ≤ subtotal := by
   unfold subtotalAfterCouponAmount
-  omega
+  exact Nat.sub_le subtotal couponAmount
 
 /-- Computes or checks `orderSubtotal` using the validated data in this module. -/
 def orderSubtotal (items : List CartLine) (couponAmount : Money) : Money :=
@@ -134,7 +132,7 @@ theorem orderSubtotal_le_cartGrossTotal (items : List CartLine) (couponAmount : 
     subtotalAfterCouponAmount_le_subtotal (cartNetTotal items) couponAmount
   have h2 : cartNetTotal items ≤ cartGrossTotal items :=
     cartNetTotal_le_grossTotal items
-  omega
+  exact h1.trans h2
 
 /-- Data shape for `ShippingMethod`; proof fields record invariants when needed. -/
 structure ShippingMethod where
@@ -186,7 +184,7 @@ theorem orderTotal_le_gross_plus_shipping_plus_tax
     orderSubtotal_le_cartGrossTotal items couponAmount
   have hshipping : shippingCharge method (orderSubtotal items couponAmount) ≤ method.price :=
     shippingCharge_le_method_price method (orderSubtotal items couponAmount)
-  omega
+  exact Nat.add_le_add (Nat.add_le_add hsubtotal hshipping) (Nat.le_refl tax)
 
 
 end WebShopTheoryComplete

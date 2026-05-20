@@ -91,8 +91,11 @@ theorem profitablePrice_guarantees_minProfit
   unfold profitablePriceFloor at h
   unfold profitAtOfferPrice
   unfold customerNetAtOfferPrice
-  unfold profitAmount
-  omega
+  exact profitAmount_ge_minProfit
+    (price - discount)
+    (dropshipProfitCostsTotal costs)
+    minProfit
+    (Nat.le_sub_of_add_le h)
 
 /-- Computes or checks `priceAtOrBelowCompetitor` using the validated data in this module. -/
 def priceAtOrBelowCompetitor (ownPrice competitorPrice : Money) : Prop :=
@@ -107,7 +110,7 @@ theorem impossible_to_match_competitor_below_floor
     False := by
   unfold priceProfitableForMinProfit at hprofit
   unfold priceAtOrBelowCompetitor at hcompetitive
-  omega
+  exact (not_lt_of_ge (hprofit.trans hcompetitive)) hbelow
 
 /-- Computes or checks `undercutPrice` using the validated data in this module. -/
 def undercutPrice (competitorPrice delta : Money) : Money :=
@@ -117,7 +120,7 @@ def undercutPrice (competitorPrice delta : Money) : Money :=
 theorem undercutPrice_le_competitorPrice (competitorPrice delta : Money) :
     undercutPrice competitorPrice delta ≤ competitorPrice := by
   unfold undercutPrice
-  omega
+  exact Nat.sub_le competitorPrice delta
 
 /-- Closed set of cases for `CompetitivePricingStrategy` in the webshop domain model. -/
 inductive CompetitivePricingStrategy where
@@ -137,7 +140,6 @@ def targetPriceFromStrategy (strategy : CompetitivePricingStrategy) (referencePr
 theorem undercutStrategy_target_le_reference (referencePrice delta : Money) :
     targetPriceFromStrategy (CompetitivePricingStrategy.Undercut delta) referencePrice ≤ referencePrice := by
   simp [targetPriceFromStrategy]
-  omega
 
 /-- Data shape for `CompetitorAwareDropshipOffer`; proof fields record invariants when needed. -/
 structure CompetitorAwareDropshipOffer where
@@ -166,7 +168,7 @@ theorem competitorAwareDropshipOffer_price_le_every_relevant_competitor
     x.offer.saleUnitPrice ≤ other.price := by
   have hbest := x.benchmark.bestOffer_is_lowest other hmem hrel
   have hown := x.salePrice_le_bestCompetitor
-  omega
+  exact hown.trans hbest
 
 
 end WebShopTheoryComplete

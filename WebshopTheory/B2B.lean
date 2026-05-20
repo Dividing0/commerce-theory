@@ -88,8 +88,7 @@ def unitPriceForTradeMode (mode : TradeMode) (entry : TradePriceBookEntry) : Mon
 /-- States the safety property captured by `tradeEntry_wholesale_cost_le_price`. -/
 theorem tradeEntry_wholesale_cost_le_price (entry : TradePriceBookEntry) :
     entry.unitCost ≤ entry.wholesaleUnitPrice := by
-  have h := entry.wholesale_margin_ok
-  omega
+  exact Nat.le_of_add_right_le entry.wholesale_margin_ok
 
 /-- States the safety property captured by `wholesaleUnitPrice_le_retailUnitPrice`. -/
 theorem wholesaleUnitPrice_le_retailUnitPrice (entry : TradePriceBookEntry) :
@@ -115,7 +114,7 @@ def retailLineNetTotal (line : RetailLine) : Money :=
 theorem retailLineNet_le_grossTotal (line : RetailLine) :
     retailLineNetTotal line ≤ retailLineGrossTotal line := by
   unfold retailLineNetTotal
-  omega
+  exact Nat.sub_le (retailLineGrossTotal line) line.discount
 
 /-- Data shape for `WholesaleLine`; proof fields record invariants when needed. -/
 structure WholesaleLine where
@@ -164,9 +163,9 @@ theorem wholesaleLineNet_le_retailEquivalent (line : WholesaleLine) :
     wholesaleLineNetTotal line ≤ wholesaleLineRetailEquivalentTotal line := by
   have h1 : wholesaleLineNetTotal line ≤ wholesaleLineGrossTotal line := by
     unfold wholesaleLineNetTotal
-    omega
+    exact Nat.sub_le (wholesaleLineGrossTotal line) line.discount
   have h2 := wholesaleLineGross_le_retailEquivalent line
-  omega
+  exact h1.trans h2
 
 /-- States the safety property captured by `wholesaleOrderNetTotal_le_retailEquivalentTotal`. -/
 theorem wholesaleOrderNetTotal_le_retailEquivalentTotal (lines : List WholesaleLine) :
@@ -175,8 +174,7 @@ theorem wholesaleOrderNetTotal_le_retailEquivalentTotal (lines : List WholesaleL
   | nil => simp [wholesaleOrderNetTotal, wholesaleRetailEquivalentTotal]
   | cons line rest ih =>
       have hline := wholesaleLineNet_le_retailEquivalent line
-      simp [wholesaleOrderNetTotal, wholesaleRetailEquivalentTotal]
-      omega
+      simpa [wholesaleOrderNetTotal, wholesaleRetailEquivalentTotal] using Nat.add_le_add hline ih
 
 /-- Data shape for `WholesaleCreditAccount`; proof fields record invariants when needed. -/
 structure WholesaleCreditAccount where

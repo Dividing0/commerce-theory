@@ -117,7 +117,7 @@ def dropshipLineWeight (line : DropshipLine) : Weight :=
 theorem dropshipLineCustomerNet_le_gross (line : DropshipLine) :
     dropshipLineCustomerNet line ≤ dropshipLineSaleGross line := by
   unfold dropshipLineCustomerNet
-  omega
+  exact Nat.sub_le (dropshipLineSaleGross line) line.discount
 
 /-- States the safety property captured by `dropshipLineSupplierCost_le_customerNet`. -/
 theorem dropshipLineSupplierCost_le_customerNet (line : DropshipLine) :
@@ -125,8 +125,7 @@ theorem dropshipLineSupplierCost_le_customerNet (line : DropshipLine) :
   unfold dropshipLineSupplierCost
   unfold dropshipLineCustomerNet
   unfold dropshipLineSaleGross
-  have h := line.margin_after_discount_ok
-  omega
+  exact Nat.le_sub_of_add_le line.margin_after_discount_ok
 
 /-- Data shape for `ReservedDropshipLine`; proof fields record invariants when needed. -/
 structure ReservedDropshipLine where
@@ -164,8 +163,7 @@ theorem dropshipSupplierCostTotal_le_saleNetTotal (lines : List DropshipLine) :
   | nil => simp [dropshipSupplierCostTotal, dropshipSaleNetTotal]
   | cons line rest ih =>
       have hline := dropshipLineSupplierCost_le_customerNet line
-      simp [dropshipSupplierCostTotal, dropshipSaleNetTotal]
-      omega
+      simpa [dropshipSupplierCostTotal, dropshipSaleNetTotal] using Nat.add_le_add hline ih
 
 /-- Data shape for `DropshipShippingQuote`; proof fields record invariants when needed. -/
 structure DropshipShippingQuote where
@@ -205,7 +203,7 @@ theorem dropshipPO_total_le_customerNet_plus_supplierShipping (po : DropshipPurc
     po.total ≤ dropshipSaleNetTotal po.lines + po.quote.price := by
   rw [po.total_correct]
   have hcost := dropshipSupplierCostTotal_le_saleNetTotal po.lines
-  omega
+  exact Nat.add_le_add_right hcost po.quote.price
 
 /-- Computes or checks `CanDropshipPOTransition` using the validated data in this module. -/
 def CanDropshipPOTransition : DropshipPOStatus → DropshipPOStatus → Prop
@@ -240,11 +238,11 @@ structure DropshipFulfillment where
 /-- States the safety property captured by `dropshipFulfillment_supplierCost_le_orderTotal`. -/
 theorem dropshipFulfillment_supplierCost_le_orderTotal (f : DropshipFulfillment) :
     dropshipSupplierCostTotal f.purchaseOrder.lines ≤ f.customerOrder.total := by
-  have hcost := dropshipSupplierCostTotal_le_saleNetTotal f.purchaseOrder.lines
-  have hsegment : dropshipSaleNetTotal f.purchaseOrder.lines = f.segmentRevenue := by
-    exact f.segmentRevenue_correct.symm
-  have horder := f.segmentRevenue_le_order_total
-  omega
+  calc
+    dropshipSupplierCostTotal f.purchaseOrder.lines ≤ dropshipSaleNetTotal f.purchaseOrder.lines :=
+      dropshipSupplierCostTotal_le_saleNetTotal f.purchaseOrder.lines
+    _ = f.segmentRevenue := f.segmentRevenue_correct.symm
+    _ ≤ f.customerOrder.total := f.segmentRevenue_le_order_total
 
 /-- Data shape for `DropshipReturnRequest`; proof fields record invariants when needed. -/
 structure DropshipReturnRequest where

@@ -96,8 +96,7 @@ theorem campaignsSpendTotal_le_campaignsBudgetTotal (campaigns : List MarketingC
   | nil => simp [campaignsSpendTotal, campaignsBudgetTotal]
   | cons c rest ih =>
       have hc : c.spend ≤ c.budget := c.spend_le_budget
-      simp [campaignsSpendTotal, campaignsBudgetTotal]
-      omega
+      simpa [campaignsSpendTotal, campaignsBudgetTotal] using Nat.add_le_add hc ih
 
 /-- Data shape for `ClickAttributedCampaign`; proof fields record invariants when needed. -/
 structure ClickAttributedCampaign where

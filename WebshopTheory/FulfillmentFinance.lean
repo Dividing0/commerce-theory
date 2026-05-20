@@ -42,7 +42,7 @@ structure TaxCalculation where
 theorem tax_le_total (t : TaxCalculation) :
     t.tax ≤ t.total := by
   rw [t.total_correct]
-  omega
+  exact Nat.le_add_left t.tax t.taxableAmount
 
 /-- Data shape for `ShippingZone`; proof fields record invariants when needed. -/
 structure ShippingZone where

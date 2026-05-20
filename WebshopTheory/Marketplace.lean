@@ -115,14 +115,13 @@ structure MarketplaceFeeLedger where
 theorem marketplacePayout_le_gross (ledger : MarketplaceFeeLedger) :
     ledger.payout ≤ ledger.gross := by
   rw [ledger.payout_correct]
-  omega
+  exact Nat.sub_le ledger.gross ledger.fee
 
 /-- States the safety property captured by `marketplacePayout_plus_fee_eq_gross`. -/
 theorem marketplacePayout_plus_fee_eq_gross (ledger : MarketplaceFeeLedger) :
     ledger.payout + ledger.fee = ledger.gross := by
   rw [ledger.payout_correct]
-  have h := ledger.fee_le_gross
-  omega
+  exact Nat.sub_add_cancel ledger.fee_le_gross
 
 /-- Data shape for `MarketplaceOrder`; proof fields record invariants when needed. -/
 structure MarketplaceOrder where
@@ -137,11 +136,10 @@ structure MarketplaceOrder where
 /-- States the safety property captured by `marketplaceOrder_payout_le_internal_total`. -/
 theorem marketplaceOrder_payout_le_internal_total (mo : MarketplaceOrder) :
     mo.feeLedger.payout ≤ mo.internalOrder.total := by
-  have hpayout : mo.feeLedger.payout ≤ mo.feeLedger.gross :=
-    marketplacePayout_le_gross mo.feeLedger
-  have hledger : mo.feeLedger.gross = mo.grossFromMarketplace := mo.feeLedger_gross_matches
-  have hgross : mo.grossFromMarketplace = mo.internalOrder.total := mo.gross_matches_internal_total
-  omega
+  calc
+    mo.feeLedger.payout ≤ mo.feeLedger.gross := marketplacePayout_le_gross mo.feeLedger
+    _ = mo.grossFromMarketplace := mo.feeLedger_gross_matches
+    _ = mo.internalOrder.total := mo.gross_matches_internal_total
 
 
 end WebShopTheoryComplete

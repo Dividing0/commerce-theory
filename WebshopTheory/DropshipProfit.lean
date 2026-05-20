@@ -30,7 +30,33 @@ def dropshipProfitCostsTotal (c : DropshipProfitCosts) : Money :=
 theorem supplierGoods_le_dropshipCostsTotal (c : DropshipProfitCosts) :
     c.supplierGoods ≤ dropshipProfitCostsTotal c := by
   unfold dropshipProfitCostsTotal
-  omega
+  calc
+    c.supplierGoods ≤ c.supplierGoods + c.supplierShipping :=
+      Nat.le_add_right c.supplierGoods c.supplierShipping
+    _ ≤ c.supplierGoods + c.supplierShipping + c.marketplaceFee :=
+      Nat.le_add_right (c.supplierGoods + c.supplierShipping) c.marketplaceFee
+    _ ≤ c.supplierGoods + c.supplierShipping + c.marketplaceFee + c.paymentFee :=
+      Nat.le_add_right (c.supplierGoods + c.supplierShipping + c.marketplaceFee) c.paymentFee
+    _ ≤ c.supplierGoods + c.supplierShipping + c.marketplaceFee + c.paymentFee + c.adSpend :=
+      Nat.le_add_right
+        (c.supplierGoods + c.supplierShipping + c.marketplaceFee + c.paymentFee) c.adSpend
+    _ ≤ c.supplierGoods + c.supplierShipping + c.marketplaceFee + c.paymentFee +
+          c.adSpend + c.returnReserve :=
+      Nat.le_add_right
+        (c.supplierGoods + c.supplierShipping + c.marketplaceFee + c.paymentFee + c.adSpend)
+        c.returnReserve
+    _ ≤ c.supplierGoods + c.supplierShipping + c.marketplaceFee + c.paymentFee +
+          c.adSpend + c.returnReserve + c.tax :=
+      Nat.le_add_right
+        (c.supplierGoods + c.supplierShipping + c.marketplaceFee + c.paymentFee +
+          c.adSpend + c.returnReserve)
+        c.tax
+    _ ≤ c.supplierGoods + c.supplierShipping + c.marketplaceFee + c.paymentFee +
+          c.adSpend + c.returnReserve + c.tax + c.otherCosts :=
+      Nat.le_add_right
+        (c.supplierGoods + c.supplierShipping + c.marketplaceFee + c.paymentFee +
+          c.adSpend + c.returnReserve + c.tax)
+        c.otherCosts
 
 /-- Computes or checks `revenueAfterDiscount` using the validated data in this module. -/
 def revenueAfterDiscount (gross discount : Money) : Money :=
@@ -77,15 +103,20 @@ structure DropshipCostUpperBounds where
 theorem actualCostsTotal_le_upperCostsTotal (b : DropshipCostUpperBounds) :
     dropshipProfitCostsTotal b.actual ≤ dropshipProfitCostsTotal b.upper := by
   unfold dropshipProfitCostsTotal
-  have h1 := b.supplierGoods_le
-  have h2 := b.supplierShipping_le
-  have h3 := b.marketplaceFee_le
-  have h4 := b.paymentFee_le
-  have h5 := b.adSpend_le
-  have h6 := b.returnReserve_le
-  have h7 := b.tax_le
-  have h8 := b.otherCosts_le
-  omega
+  exact
+    Nat.add_le_add
+      (Nat.add_le_add
+        (Nat.add_le_add
+          (Nat.add_le_add
+            (Nat.add_le_add
+              (Nat.add_le_add
+                (Nat.add_le_add b.supplierGoods_le b.supplierShipping_le)
+                b.marketplaceFee_le)
+              b.paymentFee_le)
+            b.adSpend_le)
+          b.returnReserve_le)
+        b.tax_le)
+      b.otherCosts_le
 
 /-- States the safety property captured by `profit_guaranteed_from_upper_cost_bound`. -/
 theorem profit_guaranteed_from_upper_cost_bound
@@ -94,7 +125,7 @@ theorem profit_guaranteed_from_upper_cost_bound
     minProfit ≤ profitAmount revenue (dropshipProfitCostsTotal b.actual) := by
   have hactual_le_upper := actualCostsTotal_le_upperCostsTotal b
   have hactual : dropshipProfitCostsTotal b.actual + minProfit ≤ revenue := by
-    omega
+    exact (Nat.add_le_add_right hactual_le_upper minProfit).trans h
   exact profitAmount_ge_minProfit revenue (dropshipProfitCostsTotal b.actual) minProfit hactual
 
 /-- Computes or checks `adSpendSafeForMinProfit` using the validated data in this module. -/
@@ -124,7 +155,7 @@ theorem profitLossInt_nonnegative_if_costs_le_revenue
     (revenue totalCosts : Money) (h : totalCosts ≤ revenue) :
     0 ≤ profitLossInt revenue totalCosts := by
   unfold profitLossInt
-  omega
+  exact sub_nonneg.mpr (Int.ofNat_le.mpr h)
 
 
 end WebShopTheoryComplete
