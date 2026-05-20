@@ -130,9 +130,9 @@ def capturePayment (p : TypedPayment PaymentState.Authorized) :
 def markPaid
     (order : TypedOrder OrderStatus.New)
     (payment : CapturedPayment)
-    (hOrder : payment.orderId = order.id)
-    (hAmount : payment.amount = order.total)
-    (hCurrency : payment.currency = order.currency) :
+    (_hOrder : payment.orderId = order.id)
+    (_hAmount : payment.amount = order.total)
+    (_hCurrency : payment.currency = order.currency) :
     TypedOrder OrderStatus.Paid :=
   { id := order.id
     total := order.total

@@ -35,7 +35,7 @@ structure WebhookOrderingState where
 
 /-- Computes or checks `applyWebhook` using the validated data in this module. -/
 def applyWebhook
-    (s : WebhookOrderingState) (seq : Nat) (h : s.lastSequence < seq) : WebhookOrderingState :=
+    (s : WebhookOrderingState) (seq : Nat) (_h : s.lastSequence < seq) : WebhookOrderingState :=
   { lastSequence := seq }
 
 /-- States the safety property captured by `applyWebhook_increases_sequence`. -/
