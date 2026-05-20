@@ -7,11 +7,6 @@ orders, payments, accounting, marketplaces, marketing, B2B, dropshipping,
 competitor pricing, risk, privacy, event sourcing, post-purchase flows, and
 opportunity selection.
 
-The code is intentionally domain-focused. It does not model HTTP, SQL, UI, or
-spreadsheet IO. Instead, it defines validated structures and proves small safety
-theorems that an implementation can mirror with private fields, smart
-constructors, and tests.
-
 ## Toolchain
 
 - Lean: `leanprover/lean4:v4.29.1`
