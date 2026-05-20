@@ -1,5 +1,6 @@
 import CommerceTheory.EventLanguage
 import CommerceTheory.EventReplay
+import CommerceTheory.ImplicitInvariants
 import CommerceTheory.InventoryAlgorithms
 import CommerceTheory.KeyedTotals
 import CommerceTheory.OpportunityRanking
@@ -71,6 +72,61 @@ theorem fulfillment_plan_available_stock_safety (p : FulfillmentPlan) :
 theorem marketplace_feed_price_policy_safety (f : SafeProductFeedLine) :
     f.pricePolicy.minPrice ≤ f.price ∧ f.price ≤ f.pricePolicy.maxPrice := by
   exact f.price_valid
+
+/-- Bounded coupon applications conserve subtotal after applying the discount amount. -/
+theorem bounded_coupon_application_conservation
+    (application : BoundedCouponApplication) :
+    subtotalAfterCouponAmount application.subtotal application.coupon.amount +
+      application.coupon.amount = application.subtotal := by
+  exact boundedCoupon_subtotalAfter_add_amount_eq_subtotal application
+
+/-- Captured payments validated against an order match id, amount, and currency. -/
+theorem captured_payment_order_match_safety
+    (matchEvidence : CapturedPaymentMatchesOrder) :
+    matchEvidence.payment.orderId = matchEvidence.order.id ∧
+      matchEvidence.payment.amount = matchEvidence.order.total ∧
+      matchEvidence.payment.currency = matchEvidence.order.currency := by
+  exact ⟨matchEvidence.order_matches, matchEvidence.amount_matches, matchEvidence.currency_matches⟩
+
+/-- Valid event streams keep strict sequence ordering and a correct cursor. -/
+theorem valid_event_stream_cursor_safety
+    (stream : ValidEventStream) :
+    streamSequencesStrictlyIncrease stream.stream ∧
+      stream.stream.lastSequence = eventStreamComputedLastSequence stream.stream := by
+  exact ⟨stream.sequences_strict, stream.lastSequence_correct⟩
+
+/-- Sellable catalog entries pair a matching variant with active product and variant state. -/
+theorem sellable_catalog_entry_safety
+    (entry : SellableCatalogEntry) :
+    entry.entry.variant.productId = entry.entry.product.id ∧
+      entry.entry.product.status = ProductStatus.Active ∧
+      entry.entry.variant.active = true := by
+  exact ⟨entry.entry.variant_belongs_to_product, entry.product_active, entry.variant_active⟩
+
+/-- Publishable feed lines have stock, source stock available, and valid channel pricing. -/
+theorem publishable_feed_line_safety
+    (line : PublishableFeedLine) :
+    0 < line.line.stock ∧
+      0 < availableStock line.line.stockState ∧
+      line.line.pricePolicy.minPrice ≤ line.line.price ∧
+      line.line.price ≤ line.line.pricePolicy.maxPrice := by
+  exact ⟨line.has_stock, publishableFeedLine_available_positive line,
+    line.line.price_valid.left, line.line.price_valid.right⟩
+
+/-- Validated experiment variants cannot claim more than the experiment's 100% traffic pool. -/
+theorem experiment_variant_weight_safety
+    (experiment : Experiment) (variant : ExperimentVariant)
+    (hmem : variant ∈ experiment.variants) :
+    variant.trafficWeight ≤ 100 := by
+  exact experimentVariant_trafficWeight_le_100 experiment variant hmem
+
+/-- Sourceable distributor products are active and fit min/max quantity constraints. -/
+theorem sourceable_distributor_product_safety
+    (source : SourceableDistributorProduct) :
+    source.product.active = true ∧
+      source.product.minOrderQty ≤ source.units ∧
+      source.units ≤ source.product.availableQty := by
+  exact ⟨source.can_source.left, source.can_source.right.left, source.can_source.right.right⟩
 
 /-- Valid search results are not archived, are in stock, and are margin-safe. -/
 theorem merchandising_search_result_safety (x : ValidSearchResultItem) :

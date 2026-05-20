@@ -58,6 +58,10 @@ constructors, and tests.
   language for coarse order-event sequence validation.
 - `CommerceTheory/EventReplay.lean`: CSLib bounded step relations for webhook
   and validated system-state replay.
+- `CommerceTheory/ImplicitInvariants.lean`: cross-module validated wrappers for
+  assumptions such as bounded coupons, payment/order matching, event-stream
+  cursors, sellable catalog entries, publishable feed lines, experiment traffic,
+  and sourceable distributor products.
 - `CommerceTheory/PostPurchase.lean`: subscriptions, gift cards, chargebacks, and
   cashflow plans.
 - `CommerceTheory/Forecasting.lean`: forecast confidence, replenishment gates,
@@ -118,6 +122,11 @@ Most validated structures carry proof fields. For example, an inventory state
 stores `reserved_le_total`, and an order stores `total_correct`. This means a
 value of the structure is not just data; it is data plus evidence that the
 important business invariant already holds.
+
+Some invariants only appear when values from multiple modules are joined. The
+`ImplicitInvariants` module adds wrapper types for those cases without changing
+the underlying records, so existing data shapes stay reusable while stricter
+call sites can demand explicit Lean evidence.
 
 Functions that change state usually require proofs as arguments and return new
 validated structures. Theorems then expose the reusable guarantees, such as:

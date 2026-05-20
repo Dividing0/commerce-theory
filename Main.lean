@@ -16,6 +16,7 @@ import CommerceTheory.RiskPrivacy
 import CommerceTheory.EventSourcing
 import CommerceTheory.EventLanguage
 import CommerceTheory.EventReplay
+import CommerceTheory.ImplicitInvariants
 import CommerceTheory.PostPurchase
 import CommerceTheory.Forecasting
 import CommerceTheory.InventoryAlgorithms
