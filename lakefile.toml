@@ -1,0 +1,15 @@
+name = "webshop-theory"
+version = "0.1.0"
+defaultTargets = ["webshop-theory"]
+
+[[require]]
+name = "mathlib"
+scope = "leanprover-community"
+rev = "v4.29.1"
+
+[[lean_lib]]
+name = "WebshopTheory"
+
+[[lean_exe]]
+name = "webshop-theory"
+root = "Main"
