@@ -141,7 +141,7 @@ theorem instHAddSignedDurationSelfSelf_def
   (d : SignedDuration siPow)
     (t : NaiveDateTime siPow) :
     d + t = ⟨t.toSignedDuration + d, t.isLe⟩ := by
-    simp [instHAddSignedDurationSelfSelf, instHAddSelfSignedDurationSelf_def]
+    rfl
 
 def fromYmds
   {p : Int} (y : Year) (m : Month) (d : Nat) (s : SignedDuration p)

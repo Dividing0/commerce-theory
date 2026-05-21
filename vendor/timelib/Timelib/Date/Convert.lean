@@ -183,7 +183,11 @@ theorem toScalarDate_rassoc_eq : toScalarDate = toScalarDate_rassoc := by
 
 theorem convGeneric {d : OrdinalDate} {m : Month} : d.day ≤ (m.nextWrapping.lastDayOf d.year) →
   d.day - (m.lastDayOf d.year) <= (m.nextWrapping).numDays d.year := by
-  cases m using Month.casesOn' <;> (by_cases h: d.year.isLeapYear <;> (simp [h, numDays, lastDayOf]; omega))
+  intro hDay
+  cases m using Month.casesOn' <;>
+    by_cases h : d.year.isLeapYear <;>
+      simp [h, numDays, lastDayOf] at * <;>
+      try omega
 
 def toYmd (d : OrdinalDate) : Ymd :=
   if hJan: d.day <= january.lastDayOf d.year

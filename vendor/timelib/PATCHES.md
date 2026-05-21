@@ -12,6 +12,12 @@ the project imports, while making the package compile under Lean `v4.29.1`:
   `Option`-backed order proofs use definitional reduction instead of an older
   `simp` shape.
 - `Timelib/DateTime/Parse.lean`: update deprecated integer nat-cast naming.
-- `Timelib/DateTime/Naive.lean`: replace an instance-unfolding `simp` proof
-  with `rfl`.
+- `Timelib/DateTime/Naive.lean`: replace instance-unfolding `simp` proofs with
+  `rfl`.
+- `Timelib/Date/Convert.lean`: avoid running `omega` after branches already
+  solved by `simp`.
+- `Timelib/Duration/SignedDuration.lean`: use `String.ofList` for the Lean
+  `v4.29.1` string representation and update deprecated nat-cast nonnegativity.
+- `Timelib.lean` and `lakefile.toml`: restrict the vendored library target to
+  the date, naive timestamp, and signed-duration modules CommerceTheory uses.
 - `lean-toolchain`: align the vendored package with the workspace toolchain.

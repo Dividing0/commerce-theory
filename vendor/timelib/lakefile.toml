@@ -6,6 +6,20 @@ license = "Apache-2.0"
 
 [[lean_lib]]
 name = "Timelib"
+globs = [
+  "Timelib",
+  "Timelib.Date.Convert",
+  "Timelib.Date.Month",
+  "Timelib.Date.Ordinal",
+  "Timelib.Date.Scalar",
+  "Timelib.Date.Year",
+  "Timelib.Date.Ymd",
+  "Timelib.DateTime.Naive",
+  "Timelib.Duration.Constants",
+  "Timelib.Duration.SignedDuration",
+  "Timelib.Duration.Units",
+  "Timelib.Util"
+]
 leanOptions = {autoImplicit = false}
 serverOptions = {autoImplicit = false}
 

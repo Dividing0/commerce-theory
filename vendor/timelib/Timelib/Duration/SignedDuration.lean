@@ -245,10 +245,10 @@ I think this is pretty rarely going to work as expected, so this is an experimen
 There are more complex strategies that can be tried with different versions of `Coe`
 -/
 instance {n : Int} : Coe (SignedDuration n) (SignedDuration (n - 1)) where
-  coe d := SignedDuration.convertLossless d (Int.sub_le_self n (Int.ofNat_zero_le _))
+  coe d := SignedDuration.convertLossless d (Int.sub_le_self n (Int.natCast_nonneg _))
 
 instance {n : Int} {m : Nat} : Coe (SignedDuration n) (SignedDuration (n - m)) where
-  coe d := SignedDuration.convertLossless d (Int.sub_le_self n (Int.ofNat_zero_le _))
+  coe d := SignedDuration.convertLossless d (Int.sub_le_self n (Int.natCast_nonneg _))
 
 end SignedDuration
 
@@ -294,7 +294,7 @@ def toSecondsString {siPow : Int} (d : SignedDuration siPow) : String :=
     s!"{(d.convertLossless : SignedDuration 0).val}.0 s"
   else
     let chars := s!"{d.val}".toList
-    ⟨chars.insertIdx (chars.length - siPow.natAbs) '.'⟩ ++ " s"
+    String.ofList (chars.insertIdx (chars.length - siPow.natAbs) '.') ++ " s"
 
 instance (siPow : Int) : Repr (SignedDuration siPow) where
   reprPrec x _ := toSecondsString x
