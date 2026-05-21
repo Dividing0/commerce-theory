@@ -716,6 +716,126 @@ theorem refund_journal_projection_safety
     refundJournalProjection_balanced projection,
     refundJournalProjection_amount_le_remaining projection⟩
 
+/-! ### Realistic accounting theorems -/
+
+/-- Accrual invoices balance receivables against revenue and tax liability. -/
+theorem accrual_invoice_accounting_safety
+    (accounts : AdvancedAccountingAccounts)
+    (subtotal tax total : Money)
+    (hTotal : total = subtotal + tax) :
+    debitTotal (invoiceAccrualJournal accounts subtotal tax total hTotal).postings =
+        creditTotal (invoiceAccrualJournal accounts subtotal tax total hTotal).postings ∧
+      debitTotal (invoiceAccrualJournal accounts subtotal tax total hTotal).postings = total ∧
+      creditTotal (invoiceAccrualJournal accounts subtotal tax total hTotal).postings =
+        subtotal + tax ∧
+      tax ≤ creditTotal (invoiceAccrualJournal accounts subtotal tax total hTotal).postings := by
+  exact ⟨invoiceAccrualJournal_balanced accounts subtotal tax total hTotal,
+    invoiceAccrualJournal_debitTotal accounts subtotal tax total hTotal,
+    invoiceAccrualJournal_creditTotal accounts subtotal tax total hTotal,
+    invoiceAccrualJournal_tax_le_creditTotal accounts subtotal tax total hTotal⟩
+
+/-- Cash sales balance cash against revenue and tax liability. -/
+theorem cash_sale_accounting_safety
+    (accounts : AdvancedAccountingAccounts)
+    (subtotal tax total : Money)
+    (hTotal : total = subtotal + tax) :
+    debitTotal (cashSaleJournal accounts subtotal tax total hTotal).postings =
+      creditTotal (cashSaleJournal accounts subtotal tax total hTotal).postings := by
+  exact cashSaleJournal_balanced accounts subtotal tax total hTotal
+
+/-- Accounts receivable and payable operational journals are balanced. -/
+theorem receivable_payable_accounting_safety
+    (accounts : AdvancedAccountingAccounts) (amount : Money) :
+    debitTotal (receivableCollectionJournal accounts amount).postings =
+        creditTotal (receivableCollectionJournal accounts amount).postings ∧
+      debitTotal (supplierBillJournal accounts amount).postings =
+        creditTotal (supplierBillJournal accounts amount).postings ∧
+      debitTotal (supplierPaymentJournal accounts amount).postings =
+        creditTotal (supplierPaymentJournal accounts amount).postings := by
+  exact ⟨receivableCollectionJournal_balanced accounts amount,
+    supplierBillJournal_balanced accounts amount,
+    supplierPaymentJournal_balanced accounts amount⟩
+
+/-- Marketplace clearing settlement conserves gross sales across payout and fees. -/
+theorem marketplace_clearing_settlement_accounting_safety
+    (accounts : AdvancedAccountingAccounts)
+    (gross fee payout : Money)
+    (hSettlement : payout + fee = gross) :
+    debitTotal (marketplaceSettlementJournal accounts gross fee payout hSettlement).postings =
+        gross ∧
+      debitTotal (marketplaceSettlementJournal accounts gross fee payout hSettlement).postings =
+        creditTotal
+          (marketplaceSettlementJournal accounts gross fee payout hSettlement).postings := by
+  exact ⟨marketplaceSettlementJournal_debitTotal_eq_gross
+      accounts gross fee payout hSettlement,
+    marketplaceSettlementJournal_balanced accounts gross fee payout hSettlement⟩
+
+/-- Marketplace orders can be settled through the clearing account without imbalance. -/
+theorem marketplace_order_clearing_settlement_accounting_safety
+    (order : MarketplaceOrder) (accounts : AdvancedAccountingAccounts) :
+    debitTotal
+        (marketplaceSettlementJournal
+          accounts order.internalOrder.total order.feeLedger.fee order.feeLedger.payout
+          (marketplaceOrder_payout_plus_fee_eq_internal_total order)).postings =
+        order.internalOrder.total ∧
+      debitTotal
+        (marketplaceSettlementJournal
+          accounts order.internalOrder.total order.feeLedger.fee order.feeLedger.payout
+          (marketplaceOrder_payout_plus_fee_eq_internal_total order)).postings =
+        creditTotal
+          (marketplaceSettlementJournal
+            accounts order.internalOrder.total order.feeLedger.fee order.feeLedger.payout
+            (marketplaceOrder_payout_plus_fee_eq_internal_total order)).postings := by
+  exact marketplace_clearing_settlement_accounting_safety
+    accounts order.internalOrder.total order.feeLedger.fee order.feeLedger.payout
+    (marketplaceOrder_payout_plus_fee_eq_internal_total order)
+
+/--
+Full marketplace payout reconciliation conserves gross sales across payout,
+fees, refunds, reserves, and tax withholding.
+-/
+theorem marketplace_payout_reconciliation_accounting_safety
+    (accounts : AdvancedAccountingAccounts)
+    (gross fee refund reserve tax payout : Money)
+    (hReconciles : payout + fee + refund + reserve + tax = gross) :
+    debitTotal
+        (marketplacePayoutReconciliationJournal
+          accounts gross fee refund reserve tax payout hReconciles).postings =
+        gross ∧
+      debitTotal
+        (marketplacePayoutReconciliationJournal
+          accounts gross fee refund reserve tax payout hReconciles).postings =
+        creditTotal
+          (marketplacePayoutReconciliationJournal
+            accounts gross fee refund reserve tax payout hReconciles).postings := by
+  exact ⟨marketplacePayoutReconciliationJournal_debitTotal_eq_gross
+      accounts gross fee refund reserve tax payout hReconciles,
+    marketplacePayoutReconciliationJournal_balanced
+      accounts gross fee refund reserve tax payout hReconciles⟩
+
+/-- Chargeback reserve accrual and settlement journals remain balanced. -/
+theorem chargeback_reserve_accounting_safety
+    (accounts : AdvancedAccountingAccounts) (amount : Money) :
+    debitTotal (chargebackReserveJournal accounts amount).postings =
+        creditTotal (chargebackReserveJournal accounts amount).postings ∧
+      debitTotal (chargebackSettlementJournal accounts amount).postings =
+        creditTotal (chargebackSettlementJournal accounts amount).postings := by
+  exact ⟨chargebackReserveJournal_balanced accounts amount,
+    chargebackSettlementJournal_balanced accounts amount⟩
+
+/-- Realized and unrealized FX gain/loss journals remain double-entry balanced. -/
+theorem fx_revaluation_accounting_safety
+    (accounts : AdvancedAccountingAccounts) (amount : Money) :
+    debitTotal (unrealizedFxGainJournal accounts amount).postings =
+        creditTotal (unrealizedFxGainJournal accounts amount).postings ∧
+      debitTotal (unrealizedFxLossJournal accounts amount).postings =
+        creditTotal (unrealizedFxLossJournal accounts amount).postings ∧
+      debitTotal (realizedFxGainJournal accounts amount).postings =
+        creditTotal (realizedFxGainJournal accounts amount).postings ∧
+      debitTotal (realizedFxLossJournal accounts amount).postings =
+        creditTotal (realizedFxLossJournal accounts amount).postings := by
+  exact fxRevaluationJournals_balanced accounts amount
+
 /-- Advertisable synced listings are active, publish stock, and have source stock available. -/
 theorem advertisable_synced_listing_safety
     (listing : AdvertisableSyncedMarketplaceListing) :
