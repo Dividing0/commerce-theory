@@ -1,5 +1,5 @@
 name = "commerce-theory"
-version = "0.1.0"
+version = "0.1.1"
 defaultTargets = ["commerce-theory"]
 testDriver = "Tests"
 
