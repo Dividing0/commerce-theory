@@ -35,20 +35,87 @@ theorem fxQuoteFresh_age_le_maxAge
     now - r.observedAt ≤ maxAge := by
   exact h.right
 
+/-- Convert money with an explicit rounding mode. -/
+def convertMoneyRounded (mode : RoundingMode) (amount : Money) (rate : ExchangeRate) : Money :=
+  roundMoney mode (amount * rate.numerator) rate.denominator
+
 /-- Computes or checks `convertMoneyFloor` using the validated data in this module. -/
 def convertMoneyFloor (amount : Money) (rate : ExchangeRate) : Money :=
-  amount * rate.numerator / rate.denominator
+  convertMoneyRounded RoundingMode.Floor amount rate
+
+/-- Floor FX conversion uses the declared floor rounding mode. -/
+theorem convertMoneyFloor_uses_floor_rounding (amount : Money) (rate : ExchangeRate) :
+    convertMoneyFloor amount rate =
+      convertMoneyRounded RoundingMode.Floor amount rate := by
+  rfl
+
+/-- Floor FX conversion decomposes exact scaled value into rounded units plus residual. -/
+theorem convertMoneyFloor_decomposition (amount : Money) (rate : ExchangeRate) :
+    convertMoneyFloor amount rate * rate.denominator +
+      floorRoundingRemainder (amount * rate.numerator) rate.denominator =
+        amount * rate.numerator := by
+  unfold convertMoneyFloor convertMoneyRounded roundMoney
+  exact floorRoundDiv_decomposition (amount * rate.numerator) rate.denominator
+
+/-- FX floor-rounding error is bounded by one target minor unit. -/
+theorem convertMoneyFloor_rounding_error_lt_one_minor_unit
+    (amount : Money) (rate : ExchangeRate) :
+    floorRoundingRemainder (amount * rate.numerator) rate.denominator <
+      rate.denominator := by
+  exact floorRoundingRemainder_lt_denominator
+    (amount * rate.numerator) rate.denominator rate.denominator_pos
+
+/-- FX line/item floor-rounding error is bounded by one target minor unit per line. -/
+theorem fxLines_floor_rounding_error_le_one_minor_unit_per_line
+    (amounts : List Money) (rate : ExchangeRate) :
+    floorRoundedLinesRemainderTotal rate.denominator
+        (amounts.map (fun amount => amount * rate.numerator)) ≤
+      amounts.length * rate.denominator := by
+  simpa using
+    floorRoundedLinesRemainderTotal_le_one_minor_unit_per_line
+      rate.denominator (amounts.map (fun amount => amount * rate.numerator))
+      rate.denominator_pos
 
 /-- Data shape for `TaxRate`; proof fields record invariants when needed. -/
 structure TaxRate where
   bps : BasisPoints
 
+/-- Apply a tax rate with an explicit rounding mode. -/
+def taxAmountRounded (mode : RoundingMode) (rate : TaxRate) (taxableAmount : Money) : Money :=
+  roundBpsAmount mode taxableAmount rate.bps
+
 /-- Data shape for `TaxCalculation`; proof fields record invariants when needed. -/
 structure TaxCalculation where
   taxableAmount : Money
+  rate : TaxRate
+  roundingMode : RoundingMode
   tax : Money
   total : Money
+  tax_correct : tax = taxAmountRounded roundingMode rate taxableAmount
   total_correct : total = taxableAmount + tax
+
+/-- Tax calculations expose the declared rounding mode used for the tax line. -/
+theorem taxCalculation_uses_declared_rounding (t : TaxCalculation) :
+    t.tax = taxAmountRounded t.roundingMode t.rate t.taxableAmount := by
+  exact t.tax_correct
+
+/-- Floor tax rounding error is bounded by one minor unit. -/
+theorem tax_floor_rounding_error_lt_one_minor_unit
+    (rate : TaxRate) (taxableAmount : Money) :
+    floorRoundingRemainder (taxableAmount * rate.bps.value) 10000 < 10000 := by
+  exact floorRoundingRemainder_lt_denominator
+    (taxableAmount * rate.bps.value) 10000 (by norm_num)
+
+/-- Tax line/item floor-rounding error is bounded by one minor unit per line. -/
+theorem taxLines_floor_rounding_error_le_one_minor_unit_per_line
+    (taxableAmounts : List Money) (rate : TaxRate) :
+    floorRoundedLinesRemainderTotal 10000
+        (taxableAmounts.map (fun amount => amount * rate.bps.value)) ≤
+      taxableAmounts.length * 10000 := by
+  simpa using
+    floorRoundedLinesRemainderTotal_le_one_minor_unit_per_line
+      10000 (taxableAmounts.map (fun amount => amount * rate.bps.value))
+      (by norm_num)
 
 /-- States the safety property captured by `tax_le_total`. -/
 theorem tax_le_total (t : TaxCalculation) :

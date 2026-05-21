@@ -148,13 +148,81 @@ theorem safeFeed_price_le_max (f : SafeProductFeedLine) :
     f.price ≤ f.pricePolicy.maxPrice := by
   exact f.price_valid.right
 
+/-- Marketplace fee calculation with an explicit rounding mode. -/
+def marketplaceFeeRounded (mode : RoundingMode) (gross : Money) (feeRate : BasisPoints) :
+    Money :=
+  roundBpsAmount mode gross feeRate
+
+/-- Marketplace payout calculation with an explicit rounding mode. -/
+def marketplacePayoutRounded (mode : RoundingMode) (gross : Money) (payoutRate : BasisPoints) :
+    Money :=
+  roundBpsAmount mode gross payoutRate
+
 /-- Data shape for `MarketplaceFeeLedger`; proof fields record invariants when needed. -/
 structure MarketplaceFeeLedger where
   gross : Money
+  feeRate : BasisPoints
+  feeRoundingMode : RoundingMode
   fee : Money
   payout : Money
+  fee_correct : fee = marketplaceFeeRounded feeRoundingMode gross feeRate
   fee_le_gross : fee ≤ gross
   payout_correct : payout = gross - fee
+
+/-- Marketplace fees expose their declared rounding mode. -/
+theorem marketplaceFeeLedger_uses_declared_rounding (ledger : MarketplaceFeeLedger) :
+    ledger.fee = marketplaceFeeRounded ledger.feeRoundingMode ledger.gross ledger.feeRate := by
+  exact ledger.fee_correct
+
+/-- Floor marketplace-fee rounding error is bounded by one minor unit. -/
+theorem marketplaceFee_floor_rounding_error_lt_one_minor_unit
+    (gross : Money) (feeRate : BasisPoints) :
+    floorRoundingRemainder (gross * feeRate.value) 10000 < 10000 := by
+  exact floorRoundingRemainder_lt_denominator
+    (gross * feeRate.value) 10000 (by norm_num)
+
+/-- Marketplace-fee line/item floor-rounding error is bounded by one minor unit per line. -/
+theorem marketplaceFeeLines_floor_rounding_error_le_one_minor_unit_per_line
+    (grosses : List Money) (feeRate : BasisPoints) :
+    floorRoundedLinesRemainderTotal 10000
+        (grosses.map (fun gross => gross * feeRate.value)) ≤
+      grosses.length * 10000 := by
+  simpa using
+    floorRoundedLinesRemainderTotal_le_one_minor_unit_per_line
+      10000 (grosses.map (fun gross => gross * feeRate.value))
+      (by norm_num)
+
+/-- Data shape for `MarketplacePayoutCalculation`; proof fields record invariants when needed. -/
+structure MarketplacePayoutCalculation where
+  gross : Money
+  payoutRate : BasisPoints
+  payoutRoundingMode : RoundingMode
+  payout : Money
+  payout_correct : payout = marketplacePayoutRounded payoutRoundingMode gross payoutRate
+
+/-- Marketplace payouts expose their declared rounding mode. -/
+theorem marketplacePayout_uses_declared_rounding (payout : MarketplacePayoutCalculation) :
+    payout.payout =
+      marketplacePayoutRounded payout.payoutRoundingMode payout.gross payout.payoutRate := by
+  exact payout.payout_correct
+
+/-- Floor marketplace-payout rounding error is bounded by one minor unit. -/
+theorem marketplacePayout_floor_rounding_error_lt_one_minor_unit
+    (gross : Money) (payoutRate : BasisPoints) :
+    floorRoundingRemainder (gross * payoutRate.value) 10000 < 10000 := by
+  exact floorRoundingRemainder_lt_denominator
+    (gross * payoutRate.value) 10000 (by norm_num)
+
+/-- Marketplace-payout line/item floor-rounding error is bounded by one minor unit per line. -/
+theorem marketplacePayoutLines_floor_rounding_error_le_one_minor_unit_per_line
+    (grosses : List Money) (payoutRate : BasisPoints) :
+    floorRoundedLinesRemainderTotal 10000
+        (grosses.map (fun gross => gross * payoutRate.value)) ≤
+      grosses.length * 10000 := by
+  simpa using
+    floorRoundedLinesRemainderTotal_le_one_minor_unit_per_line
+      10000 (grosses.map (fun gross => gross * payoutRate.value))
+      (by norm_num)
 
 /-- States the safety property captured by `marketplacePayout_le_gross`. -/
 theorem marketplacePayout_le_gross (ledger : MarketplaceFeeLedger) :

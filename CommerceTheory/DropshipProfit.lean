@@ -76,7 +76,9 @@ structure GuaranteedDropshipProfitQuote where
   costs : DropshipProfitCosts
   minProfit : Money
   profit : Money
+  signedProfit : SignedMoney
   profit_correct : profit = profitAmount revenue (dropshipProfitCostsTotal costs)
+  signed_profit_correct : signedProfit = profitLossAmount revenue (dropshipProfitCostsTotal costs)
   costs_plus_minProfit_le_revenue : dropshipProfitCostsTotal costs + minProfit ≤ revenue
 
 /-- States the safety property captured by `guaranteedQuote_profit_ge_minProfit`. -/
@@ -84,6 +86,13 @@ theorem guaranteedQuote_profit_ge_minProfit (q : GuaranteedDropshipProfitQuote) 
     q.minProfit ≤ q.profit := by
   rw [q.profit_correct]
   exact profitAmount_ge_minProfit q.revenue (dropshipProfitCostsTotal q.costs)
+    q.minProfit q.costs_plus_minProfit_le_revenue
+
+/-- Guaranteed quotes also prove the signed profit/loss is at least the minimum profit. -/
+theorem guaranteedQuote_signedProfit_ge_minProfit (q : GuaranteedDropshipProfitQuote) :
+    Int.ofNat q.minProfit ≤ q.signedProfit := by
+  rw [q.signed_profit_correct]
+  exact profitLossAmount_ge_minProfit q.revenue (dropshipProfitCostsTotal q.costs)
     q.minProfit q.costs_plus_minProfit_le_revenue
 
 /-- Data shape for `DropshipCostUpperBounds`; proof fields record invariants when needed. -/
@@ -146,16 +155,23 @@ theorem safeAdSpend_guarantees_minProfit
   unfold profitAfterAdSpend
   exact profitAmount_ge_minProfit revenue (nonAdCosts + adSpend) minProfit h
 
-/-- Computes or checks `profitLossInt` using the validated data in this module. -/
+/-- Computes or checks `profitLossInt` using the shared signed money model. -/
 def profitLossInt (revenue totalCosts : Money) : Int :=
-  Int.ofNat revenue - Int.ofNat totalCosts
+  profitLossAmount revenue totalCosts
 
 /-- States the safety property captured by `profitLossInt_nonnegative_if_costs_le_revenue`. -/
 theorem profitLossInt_nonnegative_if_costs_le_revenue
     (revenue totalCosts : Money) (h : totalCosts ≤ revenue) :
     0 ≤ profitLossInt revenue totalCosts := by
   unfold profitLossInt
-  exact sub_nonneg.mpr (Int.ofNat_le.mpr h)
+  exact profitLossAmount_nonnegative_if_costs_le_revenue revenue totalCosts h
+
+/-- Signed profit/loss records loss instead of floor-subtracting to zero. -/
+theorem profitLossInt_negative_if_revenue_lt_costs
+    (revenue totalCosts : Money) (h : revenue < totalCosts) :
+    profitLossInt revenue totalCosts < 0 := by
+  unfold profitLossInt
+  exact profitLossAmount_negative_if_revenue_lt_costs revenue totalCosts h
 
 
 end CommerceTheory

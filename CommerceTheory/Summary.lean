@@ -32,6 +32,18 @@ theorem competitor_aware_dropship_offer_is_profit_safe
     x.minProfit ≤ profitAtOfferPrice x.offer.saleUnitPrice x.discount x.costs := by
   exact competitorAwareDropshipOffer_profit_guaranteed x
 
+/-- Signed profit/loss preserves loss cases instead of flooring them to zero. -/
+theorem signed_profit_loss_records_loss
+    (revenue totalCosts : Money) (h : revenue < totalCosts) :
+    profitLossAmount revenue totalCosts < 0 := by
+  exact profitLossAmount_negative_if_revenue_lt_costs revenue totalCosts h
+
+/-- Guaranteed dropship quotes carry a signed profit/loss proof as well as non-negative profit. -/
+theorem guaranteed_quote_signed_profit_safety
+    (quote : GuaranteedDropshipProfitQuote) :
+    Int.ofNat quote.minProfit ≤ quote.signedProfit := by
+  exact guaranteedQuote_signedProfit_ge_minProfit quote
+
 /-- Cart totals conserve gross value: net revenue plus discounts equals gross. -/
 theorem cart_discount_conservation (items : List CartLine) :
     cartNetTotal items + cartDiscountTotal items = cartGrossTotal items := by
@@ -72,6 +84,31 @@ theorem fulfillment_plan_available_stock_safety (p : FulfillmentPlan) :
 theorem marketplace_feed_price_policy_safety (f : SafeProductFeedLine) :
     f.pricePolicy.minPrice ≤ f.price ∧ f.price ≤ f.pricePolicy.maxPrice := by
   exact f.price_valid
+
+/-- FX floor-rounding error is bounded by one target minor unit. -/
+theorem fx_floor_rounding_error_safety
+    (amount : Money) (rate : ExchangeRate) :
+    floorRoundingRemainder (amount * rate.numerator) rate.denominator <
+      rate.denominator := by
+  exact convertMoneyFloor_rounding_error_lt_one_minor_unit amount rate
+
+/-- Tax floor-rounding error is bounded by one minor unit. -/
+theorem tax_floor_rounding_error_safety
+    (rate : TaxRate) (taxableAmount : Money) :
+    floorRoundingRemainder (taxableAmount * rate.bps.value) 10000 < 10000 := by
+  exact tax_floor_rounding_error_lt_one_minor_unit rate taxableAmount
+
+/-- Marketplace-fee floor-rounding error is bounded by one minor unit. -/
+theorem marketplace_fee_rounding_error_safety
+    (gross : Money) (feeRate : BasisPoints) :
+    floorRoundingRemainder (gross * feeRate.value) 10000 < 10000 := by
+  exact marketplaceFee_floor_rounding_error_lt_one_minor_unit gross feeRate
+
+/-- Marketplace-payout floor-rounding error is bounded by one minor unit. -/
+theorem marketplace_payout_rounding_error_safety
+    (gross : Money) (payoutRate : BasisPoints) :
+    floorRoundingRemainder (gross * payoutRate.value) 10000 < 10000 := by
+  exact marketplacePayout_floor_rounding_error_lt_one_minor_unit gross payoutRate
 
 /-- Bounded coupon applications conserve subtotal after applying the discount amount. -/
 theorem bounded_coupon_application_conservation

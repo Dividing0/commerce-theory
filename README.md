@@ -17,8 +17,9 @@ opportunity selection, CRM, and logistics.
 
 ## Project Layout
 
-- `CommerceTheory/Foundation.lean`: shared units, ids, currencies, money helpers,
-  basis points, and profit arithmetic.
+- `CommerceTheory/Foundation.lean`: shared commercial numeric types, fixed-scale
+  minor-unit money, signed profit/loss, decimal money, rounding modes, ids,
+  currencies, basis points, and profit arithmetic.
 - `CommerceTheory/Catalog.lean`: products, variants, catalog entries, listing
   content, and marketplace content policy validation.
 - `CommerceTheory/Inventory.lean`: stock, reservations, optimistic locking,
@@ -43,8 +44,8 @@ opportunity selection, CRM, and logistics.
   price floors, undercutting, and competitor-aware dropship offers.
 - `CommerceTheory/Merchandising.lean`: MAP/MSRP policy, bundles, promotion
   stacking, search results, and recommendation safety.
-- `CommerceTheory/FulfillmentFinance.lean`: FX, tax, shipping zones, carrier
-  quotes, package limits, and reconciliation tolerance.
+- `CommerceTheory/FulfillmentFinance.lean`: FX, tax, rounding-mode evidence,
+  shipping zones, carrier quotes, package limits, and reconciliation tolerance.
 - `CommerceTheory/RiskPrivacy.lean`: fraud limits, roles, CRM/logistics actions,
   order and entity audit events, consent purposes, and processing bases.
 - `CommerceTheory/EventSourcing.lean`: order, CRM, and logistics domain events,
@@ -142,8 +143,12 @@ validated structures. Theorems then expose the reusable guarantees, such as:
 - order totals stay below gross cart value plus maximum shipping and tax;
 - reserved inventory never exceeds total inventory;
 - refunds never exceed captured payments;
+- marketplace fees and payouts expose their rounding mode, with floor-rounding
+  residuals bounded by one minor unit per line/item;
 - marketplace payouts never exceed gross marketplace revenue;
 - dropship offers preserve their stated minimum profit;
+- signed profit/loss records real losses instead of hiding them behind
+  floor-subtracted non-negative profit;
 - CRM outreach, account/contact linkage, support, retention, shipment, transfer,
   event projection, audit, and return flows expose their identity, permission,
   SLA, capacity, stock, tracking, and refund bounds.
@@ -181,7 +186,10 @@ conversation traces.
 
 ## Notes
 
-The theory uses `Nat` for money and quantities, so subtraction floors at zero.
-That keeps the formal model conservative and simple. Production systems can
-replace these aliases with richer numeric types while preserving the same
-invariants.
+Money is modeled as fixed-scale non-negative minor units (`NonNegMoney`) for
+ordinary ledgers and as `SignedMoney` for profit/loss. The old conservative
+`profitAmount` helper still exists for minimum-margin proofs, but signed
+`profitLossAmount` is the canonical way to state losses. FX, tax, marketplace
+fees, and payout calculations now carry explicit `RoundingMode` evidence, with
+floor-rounding theorem families bounding residual error by one minor unit per
+line/item.

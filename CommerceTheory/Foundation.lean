@@ -7,24 +7,123 @@ namespace CommerceTheory
 /-!
 This module defines the shared vocabulary used by the rest of the theory.
 
-Most numeric business quantities are modeled as `Nat` aliases. This keeps the
-specification simple: money, quantities, weights, timestamps, and ids are all
-non-negative by construction. More precise production code can refine these
-types later, but the proofs here already capture the key safety properties.
+Commercial amounts use explicit domain names instead of broad `Nat` aliases:
+non-negative money is fixed-scale minor units, signed profit/loss is an integer,
+and decimal money can carry an explicit scale when a proof needs to discuss a
+pre-rounded value. Operational counts, weights, times, and ids are still
+non-negative by construction, but each now has a named commercial role.
 -/
 
-/-- Alias for `Money`, used to make business quantities read clearly. -/
-abbrev Money := Nat
-/-- Alias for `Quantity`, used to make business quantities read clearly. -/
+/-- Minor units are fixed-scale units such as cents, kopiykas, or pence. -/
+abbrev MinorUnit := Nat
+/-- Non-negative money in fixed-scale minor units. -/
+abbrev NonNegMoney := MinorUnit
+/-- Signed money, used for profit/loss and other calculations that can go below zero. -/
+abbrev SignedMoney := Int
+
+/--
+Decimal money carries a signed coefficient plus a decimal scale. For example,
+`coefficient = 12345, scale = 2` represents 123.45 in the relevant currency.
+-/
+structure DecimalMoney where
+  coefficient : Int
+  scale : Nat
+deriving DecidableEq, Repr
+
+/-- Public money type used throughout existing commerce invariants. -/
+abbrev Money := NonNegMoney
+/-- Non-negative item or unit counts. -/
 abbrev Quantity := Nat
-/-- Alias for `Weight`, used to make business quantities read clearly. -/
+/-- Non-negative shipment/package weight units chosen by the model. -/
 abbrev Weight := Nat
-/-- Alias for `Timestamp`, used to make business quantities read clearly. -/
+/-- Non-negative monotone timestamp units chosen by the model. -/
 abbrev Timestamp := Nat
-/-- Alias for `Days`, used to make business quantities read clearly. -/
+/-- Non-negative day counts. -/
 abbrev Days := Nat
-/-- Alias for `Id`, used to make business quantities read clearly. -/
+/-- Non-negative opaque runtime id values. -/
 abbrev Id := Nat
+
+/-! ### Rounding and signed money helpers -/
+
+/-- Supported rounding policies for converting rational commercial amounts to minor units. -/
+inductive RoundingMode where
+  | Floor
+  | Ceiling
+  | HalfUp
+deriving DecidableEq, Repr
+
+/--
+Round a natural numerator divided by a natural denominator to fixed-scale minor
+units according to an explicit mode. Validated finance structures carry a proof
+that they used their declared mode.
+-/
+def roundDiv (mode : RoundingMode) (numerator denominator : Nat) : Nat :=
+  match mode with
+  | RoundingMode.Floor => numerator / denominator
+  | RoundingMode.Ceiling =>
+      if numerator % denominator = 0 then numerator / denominator else numerator / denominator + 1
+  | RoundingMode.HalfUp => (numerator + denominator / 2) / denominator
+
+/-- Round an exact rational money numerator into non-negative minor units. -/
+def roundMoney (mode : RoundingMode) (numerator denominator : Nat) : Money :=
+  roundDiv mode numerator denominator
+
+/-- Floor-rounding residual, measured in denominator-scaled minor units. -/
+def floorRoundingRemainder (numerator denominator : Nat) : Nat :=
+  numerator % denominator
+
+/-- Floor rounding decomposes an exact numerator into rounded units plus residual. -/
+theorem floorRoundDiv_decomposition (numerator denominator : Nat) :
+    roundDiv RoundingMode.Floor numerator denominator * denominator +
+      floorRoundingRemainder numerator denominator = numerator := by
+  unfold roundDiv floorRoundingRemainder
+  exact Nat.div_add_mod' numerator denominator
+
+/-- A single floor-rounded amount loses less than one minor unit. -/
+theorem floorRoundingRemainder_lt_denominator
+    (numerator denominator : Nat) (hden : 0 < denominator) :
+    floorRoundingRemainder numerator denominator < denominator := by
+  unfold floorRoundingRemainder
+  exact Nat.mod_lt numerator hden
+
+/-- A single floor-rounded amount loses at most one minor unit. -/
+theorem floorRoundingRemainder_le_denominator
+    (numerator denominator : Nat) (hden : 0 < denominator) :
+    floorRoundingRemainder numerator denominator ≤ denominator := by
+  exact (floorRoundingRemainder_lt_denominator numerator denominator hden).le
+
+/-- Sum of floor-rounding residuals for a group of rounded lines/items. -/
+def floorRoundedLinesRemainderTotal (denominator : Nat) : List Nat → Nat
+  | [] => 0
+  | numerator :: rest =>
+      floorRoundingRemainder numerator denominator +
+        floorRoundedLinesRemainderTotal denominator rest
+
+/--
+Per-line floor rounding error is bounded by one minor unit per rounded line.
+The error is expressed in denominator-scaled minor units, so `denominator`
+corresponds to one output minor unit.
+-/
+theorem floorRoundedLinesRemainderTotal_le_one_minor_unit_per_line
+    (denominator : Nat) (numerators : List Nat) (hden : 0 < denominator) :
+    floorRoundedLinesRemainderTotal denominator numerators ≤
+      numerators.length * denominator := by
+  induction numerators with
+  | nil =>
+      simp [floorRoundedLinesRemainderTotal]
+  | cons numerator rest ih =>
+      have hline :
+          floorRoundingRemainder numerator denominator ≤ denominator :=
+        floorRoundingRemainder_le_denominator numerator denominator hden
+      calc
+        floorRoundedLinesRemainderTotal denominator (numerator :: rest)
+            = floorRoundingRemainder numerator denominator +
+                floorRoundedLinesRemainderTotal denominator rest := by
+              rfl
+        _ ≤ denominator + rest.length * denominator := by
+              exact Nat.add_le_add hline ih
+        _ = (numerator :: rest).length * denominator := by
+              simp [Nat.succ_mul, Nat.add_comm]
 
 /-- A wrapper type for SKUs, so a SKU cannot be accidentally used as another id. -/
 structure Sku where
@@ -243,6 +342,10 @@ structure BasisPoints where
 def applyBps (bp : BasisPoints) (amount : Money) : Money :=
   amount * bp.value / 10000
 
+/-- Apply a basis-point rate with an explicit rounding mode. -/
+def roundBpsAmount (mode : RoundingMode) (amount : Money) (bp : BasisPoints) : Money :=
+  roundMoney mode (amount * bp.value) 10000
+
 /-- States the safety property captured by `bps_mul_bound`. -/
 theorem bps_mul_bound (bp : BasisPoints) (amount : Money) :
     amount * bp.value ≤ amount * 10000 := by
@@ -255,9 +358,13 @@ theorem applyBps_le_amount (bp : BasisPoints) (amount : Money) :
   exact Nat.div_le_of_le_mul (by
     simpa [Nat.mul_comm] using bps_mul_bound bp amount)
 
-/-- Profit is modeled conservatively as natural subtraction, flooring at zero. -/
+/-- Conservative non-negative profit floors at zero for legacy margin guarantees. -/
 def profitAmount (revenue totalCosts : Money) : Money :=
   revenue - totalCosts
+
+/-- Signed profit/loss preserves losses instead of flooring negative results to zero. -/
+def profitLossAmount (revenue totalCosts : Money) : SignedMoney :=
+  Int.ofNat revenue - Int.ofNat totalCosts
 
 /-- States the safety property captured by `profitAmount_le_revenue`. -/
 theorem profitAmount_le_revenue (revenue totalCosts : Money) :
@@ -287,6 +394,38 @@ theorem profitAmount_plus_costs_eq_revenue
     profitAmount revenue totalCosts + totalCosts = revenue := by
   unfold profitAmount
   exact Nat.sub_add_cancel h
+
+/-- Signed profit/loss is non-negative exactly when costs do not exceed revenue. -/
+theorem profitLossAmount_nonnegative_if_costs_le_revenue
+    (revenue totalCosts : Money) (h : totalCosts ≤ revenue) :
+    0 ≤ profitLossAmount revenue totalCosts := by
+  unfold profitLossAmount
+  exact sub_nonneg.mpr (Int.ofNat_le.mpr h)
+
+/-- Signed profit/loss records an actual loss when costs exceed revenue. -/
+theorem profitLossAmount_negative_if_revenue_lt_costs
+    (revenue totalCosts : Money) (h : revenue < totalCosts) :
+    profitLossAmount revenue totalCosts < 0 := by
+  unfold profitLossAmount
+  exact sub_neg.mpr (Int.ofNat_lt.mpr h)
+
+/-- A signed profit/loss calculation satisfies the same minimum-profit guard. -/
+theorem profitLossAmount_ge_minProfit
+    (revenue totalCosts minProfit : Money)
+    (h : totalCosts + minProfit ≤ revenue) :
+    Int.ofNat minProfit ≤ profitLossAmount revenue totalCosts := by
+  unfold profitLossAmount
+  rw [le_sub_iff_add_le]
+  have hNat : minProfit + totalCosts ≤ revenue := by
+    simpa [Nat.add_comm] using h
+  simpa using (Int.ofNat_le.mpr hNat)
+
+/-- When revenue covers costs, signed profit/loss agrees with non-negative profit. -/
+theorem profitLossAmount_eq_profitAmount_of_costs_le_revenue
+    (revenue totalCosts : Money) (h : totalCosts ≤ revenue) :
+    profitLossAmount revenue totalCosts = Int.ofNat (profitAmount revenue totalCosts) := by
+  unfold profitLossAmount profitAmount
+  exact (Int.natCast_sub h).symm
 
 
 end CommerceTheory
