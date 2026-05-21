@@ -205,6 +205,11 @@ theorem remainingRefundAmount_add_refunded_eq_captured (ledger : PaymentLedger) 
 def canRefund (ledger : PaymentLedger) (amount : Money) : Prop :=
   ledger.refunded + amount ≤ ledger.captured
 
+instance instDecidableCanRefund (ledger : PaymentLedger) (amount : Money) :
+    Decidable (canRefund ledger amount) := by
+  unfold canRefund
+  infer_instance
+
 /-- Any valid refund amount fits inside the remaining refundable balance. -/
 theorem canRefund_amount_le_remaining
     (ledger : PaymentLedger) (amount : Money) (h : canRefund ledger amount) :

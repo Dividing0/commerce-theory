@@ -125,6 +125,11 @@ structure IdempotencyState where
 def alreadyProcessed (key : IdempotencyKey) (s : IdempotencyState) : Prop :=
   key ∈ s.processed
 
+instance instDecidableAlreadyProcessed (key : IdempotencyKey) (s : IdempotencyState) :
+    Decidable (alreadyProcessed key s) := by
+  unfold alreadyProcessed
+  infer_instance
+
 /-- Computes or checks `markProcessed` using the validated data in this module. -/
 def markProcessed (key : IdempotencyKey) (s : IdempotencyState) : IdempotencyState :=
   { processed := key :: s.processed }
@@ -527,28 +532,27 @@ def replayFromSnapshot? (snapshot : EventSnapshot) (events : List DomainEvent) :
 
 /-- Replaying an appended suffix from a replayed prefix is equivalent to full replay. -/
 theorem replayDomainEvents?_append
-    (state : ValidSystemState) (prefix suffix : List DomainEvent) :
-    replayDomainEvents? state (prefix ++ suffix) =
-      match replayDomainEvents? state prefix with
+    (state : ValidSystemState) (eventPrefix suffix : List DomainEvent) :
+    replayDomainEvents? state (eventPrefix ++ suffix) =
+      match replayDomainEvents? state eventPrefix with
       | some snapshot => replayDomainEvents? snapshot suffix
       | none => none := by
-  induction prefix generalizing state with
+  induction eventPrefix generalizing state with
   | nil =>
       rfl
   | cons event rest ih =>
-      unfold replayDomainEvents?
       cases hEvent : applyDomainEvent? state event with
       | none =>
-          rfl
+          simp [replayDomainEvents?, hEvent]
       | some next =>
-          exact ih next
+          simpa [replayDomainEvents?, hEvent] using ih next
 
 /-- Replay from a snapshot is equivalent to replaying prefix then suffix. -/
 theorem replay_from_snapshot_equivalent_to_full_replay
     (state snapshotState : ValidSystemState)
-    (prefix suffix : List DomainEvent) (lastSequence : Nat)
-    (hPrefix : replayDomainEvents? state prefix = some snapshotState) :
-    replayDomainEvents? state (prefix ++ suffix) =
+    (eventPrefix suffix : List DomainEvent) (lastSequence : Nat)
+    (hPrefix : replayDomainEvents? state eventPrefix = some snapshotState) :
+    replayDomainEvents? state (eventPrefix ++ suffix) =
       replayFromSnapshot?
         { state := snapshotState, lastSequence := lastSequence } suffix := by
   rw [replayDomainEvents?_append, hPrefix]
