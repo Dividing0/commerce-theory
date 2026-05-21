@@ -216,3 +216,8 @@ second-precision `Timelib.NaiveDateTime 0`, `Duration` is a second-precision
 `Timelib.SignedDuration 0`, and `Days` is represented as an exact duration.
 Freshness checks compare `timestampAge now observedAt` against a duration
 window, rather than subtracting natural-number timestamp aliases.
+
+## Implementations
+
+- Rust: https://github.com/RustedBytes/commerce-theory
+
