@@ -155,7 +155,7 @@ def casesOn'.{u}
   | ⟨12, _, _⟩ => h_dec
 
 theorem not_lt_january (m : Month) : ¬m < january := by
-  cases m using casesOn' <;> simp [lt_def, le_def, Month.toNat]
+  cases m using casesOn' <;> simp [lt_def, Month.toNat]
 
 --@[reducible]
 abbrev nextWrapping (m : Month) : Month := ⟨(m.val % 12) + 1, by omega, by omega⟩
@@ -165,32 +165,32 @@ def isNext (m' m: Month) := m'.val = m.val + 1
 theorem numDays_pos (month : Month) (year : Year) : 0 < month.numDays year := by
   simp only [Month.numDays]
   by_cases hy : year.isLeapYear
-  case pos => split <;> simp [hy, if_true]
-  case neg => split <;> simp [hy, if_false]
+  case pos => split <;> simp [hy]
+  case neg => split <;> simp [hy]
 
 theorem numDays_lt_numDaysInGregorianYear (month : Month) (year : Year) : month.numDays year < year.numDaysInGregorianYear := by
   simp only [Month.numDays, Year.numDaysInGregorianYear]
   by_cases hy : year.isLeapYear
-  case pos => split <;> simp [hy, if_true]
-  case neg => split <;> simp [hy, if_false]
+  case pos => split <;> simp [hy]
+  case neg => split <;> simp [hy]
 
 theorem numDays_le_31 (month : Month) (year : Year) : month.numDays year <= 31 := by
-  simp only [Month.numDays, Year.numDaysInGregorianYear]
+  simp only [Month.numDays]
   by_cases hy : year.isLeapYear
   case pos =>
     split
-    simp [hy, if_true]
+    simp [hy]
     all_goals decide
   case neg =>
     split
-    simp [hy, if_false]
+    simp [hy]
     all_goals decide
 
 theorem numDays_le_trans (month : Month) (year : Year) (n : Nat) (h : 31 <= n := by omega) : month.numDays year <= n :=
   Nat.le_trans (numDays_le_31 month year) h
 
 theorem notDecember : forall (m : Month), m ≠ december → m.val <= 11 := by
-  intro m h; cases m using casesOn'; all_goals simp [h]; try contradiction
+  intro m h; cases m using casesOn'; all_goals simp; try contradiction
 
 @[reducible] def next' (m : Month) : Month :=
   if h: m = december then january
@@ -289,14 +289,14 @@ theorem first_lt_last (y : Year) (m : Month) : m.firstDayOf y < m.lastDayOf y :=
   cases m using casesOn' <;> (simp; try omega)
 
 theorem lastDayOf_january_eq (y : Year) : january.lastDayOf y = 31 := by
-  by_cases hLeap: y.isLeapYear; all_goals (simp [hLeap, lastDayOf])
+  simp [lastDayOf]
 
 @[simp]
 theorem numDays_january_eq (y : Year) : january.numDays y = 31 := by
-  by_cases hLeap: y.isLeapYear; all_goals (simp [hLeap])
+  simp
 
 theorem okJanuary (y : Year) : (lastDayOf y january) + 1 = (firstDayOf y february) := by
-  by_cases h: y.isLeapYear <;> simp [h]
+  simp
 
 theorem okFebruary (y : Year) : (lastDayOf y february) + 1 = (firstDayOf y march) := by
   by_cases h: y.isLeapYear <;> simp [h]

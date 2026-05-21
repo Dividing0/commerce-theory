@@ -139,7 +139,7 @@ theorem add_sub_cancel (a b : SignedDuration siPow) : a + b - b = a := by
 
 theorem add_left_neg (a : SignedDuration siPow) : -a + a = 0 := by
   apply eq_of_val_eq
-  simp only [sub_def, add_def, neg_def]
+  simp only [add_def, neg_def]
   exact Int.add_left_neg a.val
 
 theorem add_zero : ∀ (a : SignedDuration siPow), a + 0 = a := by

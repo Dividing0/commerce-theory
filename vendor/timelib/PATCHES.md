@@ -18,6 +18,10 @@ the project imports, while making the package compile under Lean `v4.29.1`:
   solved by `simp`.
 - `Timelib/Duration/SignedDuration.lean`: use `String.ofList` for the Lean
   `v4.29.1` string representation and update deprecated nat-cast nonnegativity.
+- `Timelib/Date/Month.lean`, `Timelib/Date/Ymd.lean`,
+  `Timelib/Date/Ordinal.lean`, `Timelib/Duration/SignedDuration.lean`, and
+  `Timelib/Duration/Constants.lean`: remove stale simp arguments reported by
+  Lean `v4.29.1`'s unused-simp-argument linter.
 - `Timelib.lean` and `lakefile.toml`: restrict the vendored library target to
   the date, naive timestamp, and signed-duration modules CommerceTheory uses.
 - `lean-toolchain`: align the vendored package with the workspace toolchain.

@@ -636,7 +636,7 @@ theorem projectLedger?_matches_payment_refund_folds
               simpa [projectLedger?, hRefund] using h)
             simpa [ledgerCapturedFold, ledgerRefundedFold, issueRefund] using hFold
           · exfalso
-            simpa [projectLedger?, hRefund] using h
+            simp [projectLedger?, hRefund] at h
       | StockReserved sku quantity =>
           have hFold := ih (ledger := ledger) (by
             simpa [projectLedger?] using h)

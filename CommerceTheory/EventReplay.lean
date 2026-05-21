@@ -190,7 +190,7 @@ inductive ValidDomainEventStep :
 /-- Event-aware projection steps preserve stock and ledger validity. -/
 theorem validDomainEventStep_preserves_validity
     {event : DomainEvent} {before after : ValidSystemState}
-    (h : ValidDomainEventStep event before after) :
+    (_h : ValidDomainEventStep event before after) :
     after.stock.reserved ≤ after.stock.total ∧
       after.ledger.refunded ≤ after.ledger.captured := by
   exact ⟨after.stock.reserved_le_total, after.ledger.refunded_le_captured⟩

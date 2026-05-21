@@ -20,7 +20,7 @@ deriving Repr
 namespace OrdinalDate
 
 theorem eq_of_val_eq : ∀ {o₁ o₂ : OrdinalDate} (_ : o₁.year = o₂.year) (_ : o₁.day = o₂.day), o₁ = o₂
-| ⟨y₁, d₁, hGt₁, hLt₁⟩, ⟨y₂, d₂, hGt₂, hLt₂⟩, hy, hd => by simp [hy, hd]; exact
+| ⟨y₁, d₁, hGt₁, hLt₁⟩, ⟨y₂, d₂, hGt₂, hLt₂⟩, hy, hd => by simp; exact
   { left := hy, right := hd }
 
 instance : Ord OrdinalDate where
@@ -41,16 +41,14 @@ theorem le_def' (d₁ d₂ : OrdinalDate) :
    rcases Year.lt_trichotomy d₁.year d₂.year with inl | inr | inrinr
    . simp [inl]
    .
-     have h0 : ¬(d₁.year < d₂.year) := by rw [inr]; exact Year.lt_irrefl d₂.year
-     have h1 : ¬(d₁.year < d₁.year) := Year.lt_irrefl d₁.year
      have h2 : ¬(d₂.year < d₂.year) := Year.lt_irrefl d₂.year
      rcases Nat.lt_trichotomy d₁.day d₂.day with inl_ | inr_ | inrinr_
-     . simp [h0, h1, h2, inr, inl_]; omega
-     . simp [h0, h1, h2, inr, inr_]
+     . simp [h2, inr, inl_]; omega
+     . simp [h2, inr, inr_]
      .
       have h3 : ¬d₁.day < d₂.day := by omega
       have h4 : d₂.day ≠ d₁.day := by omega
-      simp [h0, h1, h2, inr, h3, h4.symm]
+      simp [h2, inr, h3, h4.symm]
       assumption
    .
     have h00 : ¬d₁.year < d₂.year := Year.lt_asymm d₂.year d₁.year inrinr
@@ -63,16 +61,14 @@ theorem lt_def' (d₁ d₂ : OrdinalDate) :
    rcases Year.lt_trichotomy d₁.year d₂.year with inl | inrinl | inrinr
    . simp [inl]
    .
-     have h0 : ¬(d₁.year < d₂.year) := by rw [inrinl]; exact Year.lt_irrefl d₂.year
-     have h1 : ¬(d₁.year < d₁.year) := Year.lt_irrefl d₁.year
      have h2 : ¬(d₂.year < d₂.year) := Year.lt_irrefl d₂.year
      rcases Nat.lt_trichotomy d₁.day d₂.day with inl_ | inr_ | inrinr_
-     . simp [h0, h1, h2, inrinl, inl_]
-     . simp [h0, h1, h2, inrinl, inr_]
+     . simp [h2, inrinl, inl_]
+     . simp [h2, inrinl, inr_]
      .
       have h3 : ¬d₁.day < d₂.day := by omega
       have h4 : d₂.day ≠ d₁.day := by omega
-      simp [h0, h1, h2, inrinl, h3, h4.symm]
+      simp [h2, inrinl, h3, h4.symm]
    .
     have h00 : ¬d₁.year < d₂.year := Year.lt_asymm d₂.year d₁.year inrinr
     have h01 := Year.ne_of_lt d₂.year d₁.year inrinr

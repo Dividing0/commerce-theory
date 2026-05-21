@@ -23,19 +23,19 @@ theorem oneHour_eq : oneHour = oneMinute * (60 : Int) := by
   omega
 
 theorem oneDay_eq : oneDay = oneHour * (24 : Int) := by
-  simp only [oneDay, oneHour, convertLossless, Int.zero_sub, Int.natAbs_neg, oneMinute, hMul_def, mk.injEq]
+  simp only [oneDay, oneHour, convertLossless, Int.zero_sub, Int.natAbs_neg, hMul_def, mk.injEq]
   omega
 
 theorem oneWeek_eq : oneWeek = oneDay * (7 : Int) := by
-  simp only [oneWeek, oneDay, convertLossless, Int.zero_sub, Int.natAbs_neg, oneMinute, hMul_def, mk.injEq]
+  simp only [oneWeek, oneDay, convertLossless, Int.zero_sub, Int.natAbs_neg, hMul_def, mk.injEq]
   omega
 
 theorem oneYearNonleap_eq : oneYearNonleap = oneDay * (365 : Int) := by
-  simp only [oneYearNonleap, oneDay, convertLossless, Int.zero_sub, Int.natAbs_neg, oneMinute, hMul_def, mk.injEq]
+  simp only [oneYearNonleap, oneDay, convertLossless, Int.zero_sub, Int.natAbs_neg, hMul_def, mk.injEq]
   omega
 
 theorem oneYearLeap_eq : oneYearLeap = oneDay * (366 : Int) := by
-  simp only [oneYearLeap, oneDay, convertLossless, Int.zero_sub, Int.natAbs_neg, oneMinute, hMul_def, mk.injEq]
+  simp only [oneYearLeap, oneDay, convertLossless, Int.zero_sub, Int.natAbs_neg, hMul_def, mk.injEq]
   omega
 
 end durations

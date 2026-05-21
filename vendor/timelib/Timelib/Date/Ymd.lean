@@ -17,7 +17,7 @@ namespace Ymd
 
 theorem eq_of_val_eq : ∀ {o₁ o₂ : Ymd} (_ : o₁.year = o₂.year) (_ : o₁.month = o₂.month) (_ : o₁.day = o₂.day), o₁ = o₂
 | ⟨y₁, m₁, d₁, hGt₁, hLt₁⟩, ⟨y₂, m₂, d₂, hGt₂, hLt₂⟩, hy, hm, hd => by
-  simp [hy, hm, hd]; exact ⟨hy, hm, hd⟩
+  simp; exact ⟨hy, hm, hd⟩
 
 instance : Ord Ymd where
   compare d₁ d₂ :=
@@ -113,12 +113,12 @@ theorem lt_trichotomy {y₁ y₂ : Ymd} : (y₁ < y₂) ∨ y₁ = y₂ ∨ (y�
 
 theorem numDays_pos (ymd : Ymd) : 0 < ymd.month.numDays ymd.year := by
   simp only [Month.numDays]
-  by_cases hy : ymd.year.isLeapYear <;> (split <;> simp [hy, if_true, if_false])
+  by_cases hy : ymd.year.isLeapYear <;> (split <;> simp [hy])
 
 theorem month_numDays_lt_gregorianYearNumDays (ymd : Ymd) : ymd.month.numDays ymd.year < ymd.year.numDaysInGregorianYear := by
   simp only [Month.numDays, Year.numDaysInGregorianYear]
   by_cases hy : ymd.year.isLeapYear <;>
-  · simp [hy, if_true, if_false]
+  · simp [hy]
     split
     all_goals decide
 

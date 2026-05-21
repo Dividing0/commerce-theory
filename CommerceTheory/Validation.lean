@@ -717,7 +717,7 @@ theorem validateUsableInventoryLot_sound
   by_cases hUsable : lotUsableAt now lot
   · exact hUsable
   · exfalso
-    simpa [hUsable] using h
+    simp [hUsable] at h
 
 /-- Validate SKU substitution against available substitute stock. -/
 def validateSkuSubstitution
