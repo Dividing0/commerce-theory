@@ -1505,13 +1505,13 @@ theorem crm_logistics_projection_commutes (state : ValidSystemState) :
 /-- Replaying from a snapshot is equivalent to replaying prefix and suffix together. -/
 theorem snapshot_replay_equivalence
     (state snapshotState : ValidSystemState)
-    (prefix suffix : List DomainEvent) (lastSequence : Nat)
-    (hPrefix : replayDomainEvents? state prefix = some snapshotState) :
-    replayDomainEvents? state (prefix ++ suffix) =
+    (eventPrefix suffix : List DomainEvent) (lastSequence : Nat)
+    (hPrefix : replayDomainEvents? state eventPrefix = some snapshotState) :
+    replayDomainEvents? state (eventPrefix ++ suffix) =
       replayFromSnapshot?
         { state := snapshotState, lastSequence := lastSequence } suffix := by
   exact replay_from_snapshot_equivalent_to_full_replay
-    state snapshotState prefix suffix lastSequence hPrefix
+    state snapshotState eventPrefix suffix lastSequence hPrefix
 
 /-- Successful ledger projection equals the payment/refund event folds. -/
 theorem ledger_projection_matches_payment_refund_folds
@@ -1838,7 +1838,7 @@ theorem logistics_carrier_handoff_safety
 /-- Tracking histories preserve timestamp order, shipment identity, unique ids, and kind progression. -/
 theorem logistics_tracking_history_safety
     (history : TrackingHistory) :
-    trackingEventsMonotoneFrom 0 history.events ∧
+    trackingEventsMonotoneFrom unixEpochTimestamp history.events ∧
       trackingEventsForShipment history.shipmentId history.events ∧
       trackingEventsForCarrier history.carrierId history.trackingNumber history.events ∧
       trackingEventIdsDistinct history.events ∧
