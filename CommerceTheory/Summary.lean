@@ -4,6 +4,7 @@ import CommerceTheory.ImplicitInvariants
 import CommerceTheory.InventoryAlgorithms
 import CommerceTheory.KeyedTotals
 import CommerceTheory.OpportunityRanking
+import CommerceTheory.Validation
 import CommerceTheory.Workflow
 
 namespace CommerceTheory
@@ -84,6 +85,33 @@ theorem fulfillment_plan_available_stock_safety (p : FulfillmentPlan) :
 theorem marketplace_feed_price_policy_safety (f : SafeProductFeedLine) :
     f.pricePolicy.minPrice ≤ f.price ∧ f.price ≤ f.pricePolicy.maxPrice := by
   exact f.price_valid
+
+/-! ### Executable validator bridge theorems -/
+
+/-- Successful executable order validation produces a pricing-safe order. -/
+theorem executable_order_validation_pricing_safety
+    {raw : RawOrder} {order : Order}
+    (h : validateOrder raw = Except.ok order) :
+    order.total ≤
+      cartGrossTotal order.items + order.shippingMethod.price + order.tax := by
+  exact validateOrder_sound h
+
+/-- Successful executable feed-line validation produces a safe marketplace feed line. -/
+theorem executable_feed_line_validation_safety
+    {raw : RawProductFeedLine} {line : SafeProductFeedLine}
+    (h : validateFeedLine raw = Except.ok line) :
+    line.sku = line.stockState.sku ∧
+      line.pricePolicy.minPrice ≤ line.price ∧
+      line.price ≤ line.pricePolicy.maxPrice ∧
+      line.stock ≤ availableStock line.stockState := by
+  exact validateFeedLine_sound h
+
+/-- Successful executable refund validation keeps refunds within remaining captured funds. -/
+theorem executable_refund_validation_safety
+    {raw : RawRefund} {ledger : PaymentLedger} {refund : ValidRefund}
+    (h : validateRefund raw ledger = Except.ok refund) :
+    refund.amount ≤ remainingRefundAmount refund.ledger := by
+  exact validateRefund_sound h
 
 /-! ### Compositional end-to-end flow theorems -/
 
