@@ -362,16 +362,16 @@ structure TrackingHistory where
   trackingNumber : Id
   events : List TrackingEvent
   lastObservedAt : Timestamp
-  events_monotone : trackingEventsMonotoneFrom 0 events
+  events_monotone : trackingEventsMonotoneFrom unixEpochTimestamp events
   events_match_shipment : trackingEventsForShipment shipmentId events
   events_match_carrier : trackingEventsForCarrier carrierId trackingNumber events
   event_ids_distinct : trackingEventIdsDistinct events
   events_progress : trackingEventsProgressFrom TrackingEventKind.LabelCreated events
-  lastObserved_correct : lastObservedAt = trackingLastObservedFrom 0 events
+  lastObserved_correct : lastObservedAt = trackingLastObservedFrom unixEpochTimestamp events
 
 /-- Tracking histories expose their monotone timestamp guarantee. -/
 theorem trackingHistory_events_monotone (history : TrackingHistory) :
-    trackingEventsMonotoneFrom 0 history.events := by
+    trackingEventsMonotoneFrom unixEpochTimestamp history.events := by
   exact history.events_monotone
 
 /-- Tracking histories expose that every event belongs to the tracked shipment. -/
@@ -396,7 +396,7 @@ theorem trackingHistory_events_progress (history : TrackingHistory) :
 
 /-- Tracking histories store the cursor computed from their events. -/
 theorem trackingHistory_lastObserved_correct (history : TrackingHistory) :
-    history.lastObservedAt = trackingLastObservedFrom 0 history.events := by
+    history.lastObservedAt = trackingLastObservedFrom unixEpochTimestamp history.events := by
   exact history.lastObserved_correct
 
 /-- A delivery promise derived from the shipment plan. -/
