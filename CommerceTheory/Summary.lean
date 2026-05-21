@@ -85,6 +85,498 @@ theorem marketplace_feed_price_policy_safety (f : SafeProductFeedLine) :
     f.pricePolicy.minPrice ≤ f.price ∧ f.price ≤ f.pricePolicy.maxPrice := by
   exact f.price_valid
 
+/-! ### Compositional end-to-end flow theorems -/
+
+/--
+Checkout, capture, and accounting composition: a captured payment matched to an
+order can be projected into a balanced journal whose totals equal the order
+total, while retaining the order pricing bound.
+-/
+theorem checkout_to_capture_to_journal_is_safe
+    (matchEvidence : CapturedPaymentMatchesOrder)
+    (projection : CapturedPaymentJournalProjection)
+    (hPayment : projection.payment = matchEvidence.payment) :
+    matchEvidence.order.total ≤
+        cartGrossTotal matchEvidence.order.items +
+          matchEvidence.order.shippingMethod.price + matchEvidence.order.tax ∧
+      projection.payment.orderId = matchEvidence.order.id ∧
+      projection.payment.amount = matchEvidence.order.total ∧
+      projection.payment.currency = matchEvidence.order.currency ∧
+      debitTotal projection.journal.postings = matchEvidence.order.total ∧
+      creditTotal projection.journal.postings = matchEvidence.order.total ∧
+      debitTotal projection.journal.postings =
+        creditTotal projection.journal.postings := by
+  have hOrderSafe : matchEvidence.order.total ≤
+      cartGrossTotal matchEvidence.order.items +
+        matchEvidence.order.shippingMethod.price + matchEvidence.order.tax :=
+    order_total_is_safe matchEvidence.order
+  have hOrderId : projection.payment.orderId = matchEvidence.order.id := by
+    rw [hPayment]
+    exact matchEvidence.order_matches
+  have hAmount : projection.payment.amount = matchEvidence.order.total := by
+    rw [hPayment]
+    exact matchEvidence.amount_matches
+  have hCurrency : projection.payment.currency = matchEvidence.order.currency := by
+    rw [hPayment]
+    exact matchEvidence.currency_matches
+  have hDebit : debitTotal projection.journal.postings = matchEvidence.order.total := by
+    calc
+      debitTotal projection.journal.postings = projection.payment.amount :=
+        capturedPaymentJournalProjection_debit_amount projection
+      _ = matchEvidence.order.total := hAmount
+  have hCredit : creditTotal projection.journal.postings = matchEvidence.order.total := by
+    calc
+      creditTotal projection.journal.postings = projection.payment.amount :=
+        capturedPaymentJournalProjection_credit_amount projection
+      _ = matchEvidence.order.total := hAmount
+  exact ⟨hOrderSafe, hOrderId, hAmount, hCurrency, hDebit, hCredit,
+    capturedPaymentJournalProjection_balanced projection⟩
+
+/--
+Marketplace order, payout, and accounting composition: marketplace payout and
+fee recover the internal order total, and booking the payout is balanced.
+-/
+theorem marketplace_order_to_payout_to_accounting_balanced
+    (order : MarketplaceOrder) (accounts : AccountingAccounts) :
+    order.feeLedger.payout ≤ order.internalOrder.total ∧
+      order.feeLedger.payout + order.feeLedger.fee = order.internalOrder.total ∧
+      debitTotal (paymentCapturedJournal accounts order.feeLedger.payout).postings =
+        order.feeLedger.payout ∧
+      creditTotal (paymentCapturedJournal accounts order.feeLedger.payout).postings =
+        order.feeLedger.payout ∧
+      debitTotal (paymentCapturedJournal accounts order.feeLedger.payout).postings =
+        creditTotal (paymentCapturedJournal accounts order.feeLedger.payout).postings := by
+  exact ⟨marketplaceOrder_payout_le_internal_total order,
+    marketplaceOrder_payout_plus_fee_eq_internal_total order,
+    paymentCapturedJournal_debitTotal accounts order.feeLedger.payout,
+    paymentCapturedJournal_creditTotal accounts order.feeLedger.payout,
+    paymentCapturedJournal_balanced accounts order.feeLedger.payout⟩
+
+/--
+Dropship order, supplier purchase order, and delivery composition: supplier cost
+safety survives through a delivered shipment tied to the same customer order.
+-/
+theorem dropship_order_to_supplier_po_to_delivery_preserves_profit
+    (fulfillment : DropshipFulfillment) (delivery : DeliveredShipment)
+    (hOrder : delivery.promise.plan.order = fulfillment.customerOrder) :
+    dropshipSupplierCostTotal fulfillment.purchaseOrder.lines ≤
+        fulfillment.customerOrder.total ∧
+      cartWeightTotal fulfillment.customerOrder.items ≤ delivery.promise.plan.package.weight ∧
+      delivery.promise.plan.package.weight ≤
+        delivery.promise.plan.quote.service.maxWeight ∧
+      delivery.deliveredAt ≤ delivery.promise.plan.promisedDeliveryAt ∧
+      delivery.deliveryEvent.kind = TrackingEventKind.DeliveredScan := by
+  have hWeight : cartWeightTotal fulfillment.customerOrder.items ≤
+      delivery.promise.plan.package.weight := by
+    have h := shipmentPlan_package_covers_cart_weight delivery.promise.plan
+    rw [hOrder] at h
+    exact h
+  exact ⟨dropshipFulfillment_supplierCost_le_orderTotal fulfillment,
+    hWeight,
+    shipmentPlan_package_weight_safe delivery.promise.plan,
+    deliveredShipment_deliveredAt_le_plan_promised delivery,
+    delivery.delivery_event_kind⟩
+
+/--
+Return authorization, physical receipt, refund, and accounting composition:
+the issued refund stays within both ledger and order caps, and its journal is
+balanced.
+-/
+theorem return_authorization_to_refund_to_journal_preserves_caps
+    (receipt : ReturnReceipt) (projection : RefundJournalProjection)
+    (hLedger : projection.ledger = receipt.authorization.ledger)
+    (hAmount : projection.amount = receipt.refundIssued) :
+    receipt.authorization.status = ReturnAuthorizationStatus.Approved ∧
+      receipt.receivedQuantity ≤
+        cartQuantityTotal receipt.authorization.order.items ∧
+      projection.ledger = receipt.authorization.ledger ∧
+      projection.amount = receipt.refundIssued ∧
+      projection.amount ≤ remainingRefundAmount receipt.authorization.ledger ∧
+      projection.amount ≤ receipt.authorization.order.total ∧
+      debitTotal projection.journal.postings = projection.amount ∧
+      creditTotal projection.journal.postings = projection.amount ∧
+      debitTotal projection.journal.postings =
+        creditTotal projection.journal.postings := by
+  have hRemaining : projection.amount ≤
+      remainingRefundAmount receipt.authorization.ledger := by
+    have h := refundJournalProjection_amount_le_remaining projection
+    simpa [hLedger] using h
+  have hOrderCap : projection.amount ≤ receipt.authorization.order.total := by
+    calc
+      projection.amount = receipt.refundIssued := hAmount
+      _ ≤ receipt.authorization.order.total :=
+        returnReceipt_refund_le_order_total receipt
+  exact ⟨returnReceipt_authorization_approved receipt,
+    returnReceipt_received_le_order_quantity receipt,
+    hLedger, hAmount, hRemaining, hOrderCap,
+    refundJournalProjection_debit_amount projection,
+    refundJournalProjection_credit_amount projection,
+    refundJournalProjection_balanced projection⟩
+
+/--
+CRM outreach, order attribution, and fulfillment composition: a permitted CRM
+message linked to the same CRM order keeps consent evidence, attribution bounds,
+stock allocation bounds, and carrier package safety together.
+-/
+theorem crm_campaign_to_order_to_fulfillment_respects_consent_and_stock
+    (message : PermittedAccountMessage)
+    (attribution : MatchedOrderAttributionLedger)
+    (shipment : ShipmentForCRMOrder)
+    (hAccount : shipment.crmOrder.account = message.accountContact.account)
+    (hContact : shipment.crmOrder.contact = message.accountContact.contact)
+    (hOrder : attribution.ledger.order = shipment.crmOrder.order) :
+    shipment.crmOrder.account = message.accountContact.account ∧
+      shipment.crmOrder.contact = message.accountContact.contact ∧
+      canSendMarketingMessage message.accountContact.contact.subscription ∧
+      canRetarget message.accountContact.contact.retargetingConsent ∧
+      dataProcessingAllowed message.accountContact.contact.dataPermission ∧
+      attributionCreditTotal attribution.ledger.credits ≤
+        shipment.crmOrder.order.total ∧
+      shipment.plan.fulfillment.requested ≤
+        allocationsAvailableTotal shipment.plan.fulfillment.allocations ∧
+      shipment.plan.order.id = shipment.crmOrder.order.id ∧
+      shipment.plan.package.weight ≤ shipment.plan.quote.service.maxWeight := by
+  have hSubscription :
+      canSendMarketingMessage message.accountContact.contact.subscription := by
+    have h := permittedMessage_subscription_allowed message.message
+    rw [message.message_contact_matches] at h
+    exact h
+  have hConsent :
+      canRetarget message.accountContact.contact.retargetingConsent := by
+    have h := permittedMessage_consent_allowed message.message
+    rw [message.message_contact_matches] at h
+    exact h
+  have hProcessing :
+      dataProcessingAllowed message.accountContact.contact.dataPermission :=
+    permittedAccountMessage_processing_allowed message
+  have hAttribution : attributionCreditTotal attribution.ledger.credits ≤
+      shipment.crmOrder.order.total := by
+    have h := matchedAttributionLedger_total_le_order_total attribution
+    simpa [hOrder] using h
+  exact ⟨hAccount, hContact, hSubscription, hConsent, hProcessing,
+    hAttribution, shipmentPlan_requested_le_availableTotal shipment.plan,
+    shipmentForCRMOrder_order_id_matches shipment,
+    shipmentForCRMOrder_package_weight_safe shipment⟩
+
+/-! ### Additional compositional flow families -/
+
+/--
+Catalog, feed, listing, and advertising composition: a sellable catalog entry
+can be connected to a publishable feed line, an advertisable marketplace
+listing, and a campaign whose destination matches that marketplace.
+-/
+theorem catalog_to_feed_to_advertising_is_safe
+    (entry : SellableCatalogEntry)
+    (feed : PublishableFeedLine)
+    (listing : AdvertisableSyncedMarketplaceListing)
+    (campaign : MarketingCampaign)
+    (hFeedSku : feed.line.sku = entry.entry.variant.sku)
+    (hListingSku : listing.synced.listing.sku = feed.line.sku)
+    (hFeedChannel :
+      feed.line.channel =
+        SalesChannel.MarketplaceChannel listing.synced.listing.marketplace)
+    (hDestination :
+      destinationMatchesMarketplace
+        campaign.destination listing.synced.listing.marketplace) :
+    entry.entry.product.status = ProductStatus.Active ∧
+      entry.entry.variant.active = true ∧
+      feed.line.sku = entry.entry.variant.sku ∧
+      listing.synced.listing.sku = feed.line.sku ∧
+      feed.line.channel =
+        SalesChannel.MarketplaceChannel listing.synced.listing.marketplace ∧
+      0 < feed.line.stock ∧
+      0 < availableStock feed.line.stockState ∧
+      feed.line.pricePolicy.minPrice ≤ feed.line.price ∧
+      feed.line.price ≤ feed.line.pricePolicy.maxPrice ∧
+      listing.synced.listing.status = ListingStatus.Active ∧
+      0 < listing.synced.listing.publishedStock ∧
+      0 < availableStock listing.synced.stock ∧
+      campaign.spend ≤ campaign.budget ∧
+      destinationMatchesMarketplace
+        campaign.destination listing.synced.listing.marketplace := by
+  exact ⟨entry.product_active, entry.variant_active, hFeedSku, hListingSku,
+    hFeedChannel, feed.has_stock, publishableFeedLine_available_positive feed,
+    feed.line.price_valid.left, feed.line.price_valid.right,
+    advertisableSyncedListing_active listing,
+    advertisableSyncedListing_in_stock listing,
+    advertisableSyncedListing_available_positive listing,
+    campaign.spend_le_budget, hDestination⟩
+
+/--
+Inventory allocation through delivery tracking: allocation stock bounds,
+carrier package bounds, handoff chronology, tracking identity, and delivery
+promise evidence compose for one shipment flow.
+-/
+theorem allocation_to_delivery_tracking_is_safe
+    (plan : LogisticsShipmentPlan)
+    (handoff : CarrierHandoff)
+    (history : TrackingHistory)
+    (delivery : DeliveredShipment)
+    (hHandoffPlan : handoff.plan = plan)
+    (hDeliveryPlan : delivery.promise.plan = plan)
+    (hHistoryShipment : history.shipmentId = plan.id)
+    (hDeliveryHistory : delivery.history = history) :
+    plan.fulfillment.requested ≤ allocationsAvailableTotal plan.fulfillment.allocations ∧
+      allocationKeysDistinct plan.fulfillment.allocations ∧
+      plan.package.weight ≤ plan.quote.service.maxWeight ∧
+      plan.plannedShipAt ≤ handoff.handedOffAt ∧
+      handoff.handedOffAt ≤ handoff.acceptanceScanAt ∧
+      trackingEventsForShipment plan.id history.events ∧
+      trackingEventsForCarrier plan.quote.service.carrierId
+        history.trackingNumber history.events ∧
+      trackingEventIdsDistinct history.events ∧
+      delivery.deliveredAt ≤ plan.promisedDeliveryAt ∧
+      delivery.deliveryEvent.kind = TrackingEventKind.DeliveredScan := by
+  have hPlanned : plan.plannedShipAt ≤ handoff.handedOffAt := by
+    have h := carrierHandoff_plannedShip_le_handedOff handoff
+    rwa [hHandoffPlan] at h
+  have hCarrier : history.carrierId = plan.quote.service.carrierId := by
+    have h := deliveredShipment_history_carrier_matches_quote delivery
+    rwa [hDeliveryHistory, hDeliveryPlan] at h
+  have hEventsForPlan : trackingEventsForShipment plan.id history.events := by
+    have h := trackingHistory_events_match_shipment history
+    rwa [hHistoryShipment] at h
+  have hEventsForCarrier :
+      trackingEventsForCarrier plan.quote.service.carrierId
+        history.trackingNumber history.events := by
+    have h := trackingHistory_events_match_carrier history
+    rwa [hCarrier] at h
+  have hDeliveredByPlan : delivery.deliveredAt ≤ plan.promisedDeliveryAt := by
+    have h := deliveredShipment_deliveredAt_le_plan_promised delivery
+    rwa [hDeliveryPlan] at h
+  exact ⟨shipmentPlan_requested_le_availableTotal plan,
+    shipmentPlan_allocation_keys_distinct plan,
+    shipmentPlan_package_weight_safe plan,
+    hPlanned,
+    carrierHandoff_handedOff_le_acceptanceScan handoff,
+    hEventsForPlan,
+    hEventsForCarrier,
+    trackingHistory_event_ids_distinct history,
+    hDeliveredByPlan,
+    delivery.delivery_event_kind⟩
+
+/--
+Ordered event streams, webhook replay, and semantic state replay compose: an
+ordered stream has matching webhook step evidence, and a valid system replay
+preserves stock and refund-ledger safety.
+-/
+theorem ordered_domain_event_stream_replay_preserves_system_safety
+    (state : WebhookOrderingState)
+    (stream : ValidEventStream)
+    {before after : ValidSystemState} {steps : Nat}
+    (hOrdered :
+      streamSequencesStrictlyIncreaseFrom state.lastSequence stream.stream.events)
+    (hReplay : ValidSystemReplayInSteps before after steps) :
+    streamSequencesStrictlyIncrease stream.stream ∧
+      stream.stream.lastSequence = eventStreamComputedLastSequence stream.stream ∧
+      (∃ next : WebhookOrderingState,
+        WebhookReplayInSteps state next stream.stream.events.length) ∧
+      after.stock.reserved ≤ after.stock.total ∧
+      after.ledger.refunded ≤ after.ledger.captured := by
+  rcases orderedWebhookStream_relatesInSteps
+      state stream.stream.events hOrdered with ⟨next, hWebhook⟩
+  have hState := validSystemReplayInSteps_preserves_validity hReplay
+  exact ⟨stream.sequences_strict, stream.lastSequence_correct,
+    ⟨next, hWebhook⟩, hState.left, hState.right⟩
+
+/--
+Lead conversion, sales pipeline, and opportunity portfolio composition:
+converted lead identity and amount bounds combine with pipeline valuation and
+portfolio capital/profit safety.
+-/
+theorem converted_lead_to_pipeline_to_portfolio_value_safe
+    (conversion : ConvertedLeadOpportunity)
+    (pipeline : SalesPipeline)
+    (portfolio : DropshipOpportunityPortfolio)
+    (hOpportunityMem : conversion.opportunity ∈ pipeline.opportunities) :
+    conversion.lead.status = LeadStatus.Converted ∧
+      conversion.opportunity.sourceLead = some conversion.lead.id ∧
+      conversion.opportunity.amount ≤ conversion.lead.estimatedValue ∧
+      conversion.opportunity ∈ pipeline.opportunities ∧
+      opportunitiesUseCurrency pipeline.currency pipeline.opportunities ∧
+      opportunityWeightedValueTotal pipeline.opportunities ≤
+        opportunityGrossValue pipeline.opportunities ∧
+      candidatesCapitalTotal portfolio.selected ≤ portfolio.investmentFund ∧
+      candidatesMinProfitTotal portfolio.selected ≤
+        candidatesProfitTotal portfolio.selected := by
+  exact ⟨conversion.lead_converted, conversion.opportunity_source_matches,
+    conversion.opportunity_amount_le_estimate, hOpportunityMem,
+    pipeline.currency_consistent,
+    salesPipeline_weightedValue_le_grossValue pipeline,
+    opportunityPortfolio_capital_safe portfolio,
+    opportunityPortfolio_expectedProfit_covers_minProfit portfolio⟩
+
+/--
+Trusted competitor signal through MAP-compliant offer and selected portfolio
+candidate: freshness, trust, MAP, profit floor, competitive target price, and
+portfolio bounds compose.
+-/
+theorem trusted_competitor_signal_to_portfolio_candidate_safe
+    (benchmark : TrustedFreshCompetitorBenchmark)
+    (offer : MapCompliantCompetitorAwareOffer)
+    (candidate : DropshipOpportunityCandidate)
+    (portfolio : DropshipOpportunityPortfolio)
+    (hCandidateMem : candidate ∈ portfolio.selected) :
+    benchmark.benchmark.bestOffer.observedAt ≤ benchmark.now ∧
+      timestampAge benchmark.now benchmark.benchmark.bestOffer.observedAt ≤
+        benchmark.maxAge ∧
+      trustAllowsAutoRepricing benchmark.trust ∧
+      offer.policy.mapPrice ≤ offer.offer.offer.saleUnitPrice ∧
+      offer.offer.minProfit ≤
+        profitAtOfferPrice offer.offer.offer.saleUnitPrice
+          offer.offer.discount offer.offer.costs ∧
+      candidate ∈ portfolio.selected ∧
+      candidate.minProfit ≤
+        profitAtOfferPrice candidate.targetPrice 0 candidate.costs ∧
+      candidate.targetPrice ≤ candidate.competitorPrice ∧
+      candidatesCapitalTotal portfolio.selected ≤ portfolio.investmentFund ∧
+      candidatesMinProfitTotal portfolio.selected ≤
+        candidatesProfitTotal portfolio.selected := by
+  exact ⟨benchmark.fresh_best_offer.left, benchmark.fresh_best_offer.right,
+    benchmark.trust_allows_auto, offer.advertised_ok,
+    competitorAwareDropshipOffer_profit_guaranteed offer.offer,
+    hCandidateMem, candidate_targetPrice_profit_safe candidate,
+    candidate_targetPrice_competitive candidate,
+    opportunityPortfolio_capital_safe portfolio,
+    opportunityPortfolio_expectedProfit_covers_minProfit portfolio⟩
+
+/--
+Forecast, supplier quality, capacity, and distributor sourcing composition:
+actionable demand can be paired with an approved supplier, capacity check, and
+sourceable distributor product.
+-/
+theorem forecast_to_supplier_sourcing_is_safe
+    (forecast : ActionableDemandForecast)
+    (supplier : ApprovedOrderableSupplierQuality)
+    (capacity : SupplierDailyCapacity)
+    (source : SourceableDistributorProduct)
+    (newOrders : Nat)
+    (hCapacity : canAddSupplierOrders capacity newOrders)
+    (hCapacitySupplier :
+      capacity.supplier.id = supplier.quality.supplier.id)
+    (hSourceSupplier :
+      source.product.distributorId = supplier.quality.supplier.id)
+    (hSourceSku : forecast.forecast.sku = source.product.sku) :
+    confidenceAllowsAutoReplenish forecast.forecast.confidence ∧
+      0 < forecast.forecast.expectedUnits ∧
+      0 < forecast.forecast.horizonDays ∧
+      supplier.quality.supplier.active = true ∧
+      supplier.quality.supplier.suspended = false ∧
+      capacity.ordersAcceptedToday + newOrders ≤ capacity.supplier.maxDailyOrders ∧
+      capacity.supplier.id = supplier.quality.supplier.id ∧
+      source.product.distributorId = supplier.quality.supplier.id ∧
+      forecast.forecast.sku = source.product.sku ∧
+      source.product.active = true ∧
+      source.product.minOrderQty ≤ source.units ∧
+      source.units ≤ source.product.availableQty := by
+  exact ⟨forecast.actionable.left, forecast.actionable.right.left,
+    forecast.actionable.right.right,
+    supplier.can_receive_orders.left, supplier.can_receive_orders.right,
+    canAddSupplierOrders_keeps_supplier_max capacity newOrders hCapacity,
+    hCapacitySupplier, hSourceSupplier, hSourceSku,
+    source.can_source.left, source.can_source.right.left,
+    source.can_source.right.right⟩
+
+/--
+Retention, promotion, coupon, and order-pricing composition: CRM value guards,
+promotion caps, coupon conservation, and order pricing safety compose.
+-/
+theorem retention_promotion_to_order_discount_is_safe
+    (offer : RetentionOffer)
+    (promotion : AcceptedPromotionSet)
+    (application : BoundedCouponApplication)
+    (order : Order)
+    (hCoupon : application.coupon = offer.coupon)
+    (hOrderCoupon : order.couponAmount = application.coupon.amount) :
+    offer.account.status = CRMAccountStatus.Active ∧
+      offer.discount ≤ offer.account.lifetimeValue ∧
+      offer.discount ≤ offer.segment.maxRetentionDiscount ∧
+      promotion.profitFloor ≤ promotion.resultingPrice ∧
+      promotion.totalDiscount ≤ promotion.discountCap ∧
+      application.coupon.amount ≤ application.subtotal ∧
+      subtotalAfterCouponAmount application.subtotal application.coupon.amount +
+        application.coupon.amount = application.subtotal ∧
+      application.coupon = offer.coupon ∧
+      order.couponAmount = application.coupon.amount ∧
+      order.total ≤
+        cartGrossTotal order.items + order.shippingMethod.price + order.tax := by
+  exact ⟨offer.account_active,
+    retentionOffer_discount_le_lifetimeValue offer,
+    retentionOffer_discount_le_segment_cap offer,
+    promotion.floor_le_price,
+    promotion.discount_le_cap,
+    application.amount_le_subtotal,
+    boundedCoupon_subtotalAfter_add_amount_eq_subtotal application,
+    hCoupon, hOrderCoupon,
+    order_total_is_safe order⟩
+
+/--
+Gift-card redemption, chargeback, and cashflow composition: post-purchase
+adjustments retain expiry/balance/chargeback caps while the cashflow plan keeps
+its reserve safety.
+-/
+theorem post_purchase_adjustments_to_cashflow_plan_safe
+    (redemption : ValidGiftCardRedemptionAt)
+    (chargeback : ChargebackForCapturedPayment)
+    (plan : EventBackedCashflowPlan) :
+    redemption.now ≤ redemption.redemption.card.expiresAt ∧
+      giftCardBalanceAfterRedeem redemption.redemption +
+        redemption.redemption.amount =
+          redemption.redemption.card.balance ∧
+      chargeback.chargeback.chargebackAmount ≤ chargeback.payment.amount ∧
+      plan.requiredReserve + cashflowOutflowsTotal plan.events ≤
+        plan.startingCash + cashflowInflowsTotal plan.events := by
+  exact ⟨redemption.not_expired,
+    giftCardBalanceAfterRedeem_add_amount_eq_balance redemption.redemption,
+    chargebackForCapturedPayment_amount_safe chargeback,
+    eventBackedCashflowPlan_safe plan⟩
+
+/--
+Logistics exception through CRM support resolution: shipment/order linkage,
+escalation evidence, exception chronology, and support SLA resolution compose.
+-/
+theorem logistics_exception_to_support_resolution_sla_safe
+    (escalation : LogisticsExceptionSupportCase)
+    (resolution : ResolvedSupportCase)
+    (hResolvedCase : resolution.case_.id = escalation.supportCase.id) :
+    escalation.exception.shipmentId = escalation.shipment.id ∧
+      escalation.supportCase.orderId = some escalation.shipment.order.id ∧
+      escalation.supportCase.status = SupportCaseStatus.Escalated ∧
+      escalation.exception.raisedAt ≤ escalation.supportCase.openedAt ∧
+      resolution.case_.id = escalation.supportCase.id ∧
+      resolution.case_.openedAt ≤ resolution.resolvedAt ∧
+      resolution.case_.lastUpdatedAt ≤ resolution.resolvedAt ∧
+      resolution.resolvedAt ≤ resolution.case_.slaDueAt ∧
+      resolution.case_.status = SupportCaseStatus.Resolved := by
+  exact ⟨escalation.exception_shipment_matches,
+    escalation.support_case_order_matches,
+    escalation.support_case_escalated,
+    escalation.exception_raised_before_case_opened,
+    hResolvedCase,
+    resolution.opened_le_resolved,
+    resolution.lastUpdated_le_resolved,
+    resolution.resolved_by_sla,
+    resolution.status_resolved⟩
+
+/--
+Audited command through domain-event replay: command permission and audit log
+identity compose with event-replay preservation of stock and refund-ledger
+safety.
+-/
+theorem audited_command_to_event_replay_preserves_permission_and_state
+    (cmd : AuditedCommand)
+    {event : DomainEvent} {before after : ValidSystemState}
+    (hStep : ValidDomainEventStep event before after) :
+    CanPerform cmd.actor cmd.action ∧
+      cmd.event.actor = cmd.actor ∧
+      cmd.event.action = cmd.action ∧
+      cmd.event.orderId = cmd.orderId ∧
+      after.stock.reserved ≤ after.stock.total ∧
+      after.ledger.refunded ≤ after.ledger.captured := by
+  have hValid := validDomainEventStep_preserves_validity hStep
+  exact ⟨cmd.allowed, cmd.event_actor_matches, cmd.event_action_matches,
+    cmd.event_order_matches, hValid.left, hValid.right⟩
+
 /-- FX floor-rounding error is bounded by one target minor unit. -/
 theorem fx_floor_rounding_error_safety
     (amount : Money) (rate : ExchangeRate) :
