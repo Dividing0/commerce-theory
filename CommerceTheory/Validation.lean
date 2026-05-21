@@ -473,13 +473,13 @@ theorem validateCartLines_matches_raw
   | cons raw rest ih =>
       cases hLine : validateCartLine raw with
       | error e =>
-          simp [validateCartLines, hLine] at h
+          simp [validateCartLines, hLine, Bind.bind, Except.bind] at h
       | ok line =>
           cases hRest : validateCartLines rest with
           | error e =>
-              simp [validateCartLines, hLine, hRest] at h
+              simp [validateCartLines, hLine, hRest, Bind.bind, Except.bind] at h
           | ok restLines =>
-              simp [validateCartLines, hLine, hRest] at h
+              simp [validateCartLines, hLine, hRest, Bind.bind, Except.bind] at h
               cases h
               exact ⟨validateCartLine_matches_raw hLine, ih hRest⟩
 
@@ -559,22 +559,20 @@ theorem validateOrder_matches_raw
     {raw : RawOrder} {order : Order}
     (h : validateOrder raw = Except.ok order) :
     orderMatchesRaw raw order := by
-  unfold validateOrder at h
   cases hItems : validateCartLines raw.items with
   | error e =>
-      simp [hItems] at h
+      simp [validateOrder, hItems, Bind.bind, Except.bind] at h
   | ok items =>
-      by_cases hCoupon : raw.couponAmount ≤ cartNetTotal items
-      · by_cases hShipping : shippingAvailable raw.shippingMethod (cartWeightTotal items)
-        · by_cases hTotal :
-            raw.total = orderTotal raw.shippingMethod raw.couponAmount raw.tax items
-          · simp [hItems, hCoupon, hShipping, hTotal] at h
-            cases h
+      simp [validateOrder, hItems, Bind.bind, Except.bind] at h
+      split at h
+      · split at h
+        · split at h
+          · cases h
             exact ⟨rfl, validateCartLines_matches_raw hItems,
               rfl, rfl, rfl, rfl, rfl, rfl⟩
-          · simp [hItems, hCoupon, hShipping, hTotal] at h
-        · simp [hItems, hCoupon, hShipping] at h
-      · simp [hItems, hCoupon] at h
+          · cases h
+        · cases h
+      · cases h
 
 /-- Raw stock data before the reservation bound has been checked. -/
 structure RawStockState where
