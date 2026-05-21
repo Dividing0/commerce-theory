@@ -1,6 +1,7 @@
 name = "commerce-theory"
 version = "0.1.0"
 defaultTargets = ["commerce-theory"]
+testDriver = "Tests"
 
 [[require]]
 name = "cslib"
@@ -18,6 +19,10 @@ path = "vendor/timelib"
 
 [[lean_lib]]
 name = "CommerceTheory"
+
+[[lean_lib]]
+name = "Tests"
+globs = ["Tests.+"]
 
 [[lean_exe]]
 name = "commerce-theory"
