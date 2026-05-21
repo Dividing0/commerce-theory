@@ -72,19 +72,62 @@ theorem returnedShipmentStatus_has_no_outgoing (next : ShipmentStatus) :
 def orderEligibleForLogistics (order : Order) : Prop :=
   order.status = OrderStatus.Paid ∨ order.status = OrderStatus.Packed
 
+/-- A shippable destination whose zone can be matched against carrier services. -/
+structure ShippingDestination where
+  id : Id
+  zone : ShippingZone
+  postalCode : Nat
+
+/-- A SKU appears in an order cart when one of the cart lines uses it. -/
+def cartContainsSku (sku : Sku) : List CartLine → Prop
+  | [] => False
+  | line :: rest => line.sku = sku ∨ cartContainsSku sku rest
+
+/-- Every allocation in a fulfillment plan must correspond to an order cart SKU. -/
+def allocationsMatchCartSkus (items : List CartLine) : List Allocation → Prop
+  | [] => True
+  | allocation :: rest =>
+      cartContainsSku allocation.node.stock.sku items ∧
+        allocationsMatchCartSkus items rest
+
+/-- Every allocation in a single-origin shipment must come from the origin warehouse. -/
+def allocationsUseWarehouse (warehouse : Warehouse) : List Allocation → Prop
+  | [] => True
+  | allocation :: rest =>
+      allocation.node.warehouse.id = warehouse.id ∧
+        allocationsUseWarehouse warehouse rest
+
+/-- Nonempty allocation SKU checks expose the first allocation's SKU membership. -/
+theorem allocationsMatchCartSkus_head
+    (items : List CartLine) (allocation : Allocation) (rest : List Allocation)
+    (h : allocationsMatchCartSkus items (allocation :: rest)) :
+    cartContainsSku allocation.node.stock.sku items := by
+  exact h.left
+
+/-- Nonempty warehouse checks expose the first allocation's origin warehouse. -/
+theorem allocationsUseWarehouse_head
+    (warehouse : Warehouse) (allocation : Allocation) (rest : List Allocation)
+    (h : allocationsUseWarehouse warehouse (allocation :: rest)) :
+    allocation.node.warehouse.id = warehouse.id := by
+  exact h.left
+
 /-- Shipment plan tying an order to fulfillment allocations and a carrier quote. -/
 structure LogisticsShipmentPlan where
   id : ShipmentId
   order : Order
-  fulfillment : FulfillmentPlan
+  fulfillment : DistinctFulfillmentPlan
   package : Package
   quote : CarrierQuote
   warehouse : Warehouse
+  destination : ShippingDestination
   plannedShipAt : Timestamp
   promisedDeliveryAt : Timestamp
   order_eligible : orderEligibleForLogistics order
   quantity_matches_cart : fulfillment.requested = cartQuantityTotal order.items
+  allocations_match_cart_skus : allocationsMatchCartSkus order.items fulfillment.allocations
+  allocations_use_warehouse : allocationsUseWarehouse warehouse fulfillment.allocations
   quote_package_matches : quote.package = package
+  quote_zone_matches_destination : quote.service.zone = destination.zone
   package_covers_cart_weight : cartWeightTotal order.items ≤ package.weight
   planned_le_promised : plannedShipAt ≤ promisedDeliveryAt
 
@@ -101,7 +144,22 @@ theorem shipmentPlan_quantity_matches_cart (plan : LogisticsShipmentPlan) :
 /-- Shipment plans inherit the fulfillment allocation stock bound. -/
 theorem shipmentPlan_requested_le_availableTotal (plan : LogisticsShipmentPlan) :
     plan.fulfillment.requested ≤ allocationsAvailableTotal plan.fulfillment.allocations := by
-  exact fulfillmentPlan_requested_le_availableTotal plan.fulfillment
+  exact distinctFulfillmentPlan_requested_le_availableTotal plan.fulfillment
+
+/-- Shipment plans use distinct warehouse/SKU allocation keys. -/
+theorem shipmentPlan_allocation_keys_distinct (plan : LogisticsShipmentPlan) :
+    allocationKeysDistinct plan.fulfillment.allocations := by
+  exact plan.fulfillment.allocation_keys_distinct
+
+/-- Shipment plan allocations all correspond to SKUs in the order cart. -/
+theorem shipmentPlan_allocations_match_cart_skus (plan : LogisticsShipmentPlan) :
+    allocationsMatchCartSkus plan.order.items plan.fulfillment.allocations := by
+  exact plan.allocations_match_cart_skus
+
+/-- Shipment plan allocations all originate from the plan's warehouse. -/
+theorem shipmentPlan_allocations_use_warehouse (plan : LogisticsShipmentPlan) :
+    allocationsUseWarehouse plan.warehouse plan.fulfillment.allocations := by
+  exact plan.allocations_use_warehouse
 
 /-- Shipment packages fit inside the selected carrier service capacity. -/
 theorem shipmentPlan_package_weight_safe (plan : LogisticsShipmentPlan) :
@@ -118,6 +176,11 @@ theorem shipmentPlan_package_covers_cart_weight (plan : LogisticsShipmentPlan) :
 theorem shipmentPlan_quote_price_covers_base_cost (plan : LogisticsShipmentPlan) :
     plan.quote.service.baseCost ≤ plan.quote.price := by
   exact carrierQuote_price_covers_base_cost plan.quote
+
+/-- Shipment plan carrier service zones match the destination zone. -/
+theorem shipmentPlan_quote_zone_matches_destination (plan : LogisticsShipmentPlan) :
+    plan.quote.service.zone = plan.destination.zone := by
+  exact plan.quote_zone_matches_destination
 
 /-- Shipment plans do not promise delivery before the planned ship time. -/
 theorem shipmentPlan_planned_le_promised (plan : LogisticsShipmentPlan) :
@@ -144,10 +207,35 @@ theorem logisticsShipment_created_le_updated (shipment : LogisticsShipment) :
     shipment.createdAt ≤ shipment.updatedAt := by
   exact shipment.created_le_updated
 
+/-- Transition a shipment while preserving plan identity and timestamp ordering. -/
+def transitionShipment
+    (shipment : LogisticsShipment)
+    (next : ShipmentStatus)
+    (_h : CanShipmentTransition shipment.status next)
+    (updatedAt : Timestamp)
+    (hUpdated : shipment.createdAt ≤ updatedAt) :
+    LogisticsShipment :=
+  { id := shipment.id
+    plan := shipment.plan
+    status := next
+    createdAt := shipment.createdAt
+    updatedAt := updatedAt
+    id_matches_plan := shipment.id_matches_plan
+    created_le_updated := hUpdated }
+
+/-- Shipment transitions preserve shipment identifiers. -/
+theorem transitionShipment_preserves_id
+    (shipment : LogisticsShipment) (next : ShipmentStatus)
+    (h : CanShipmentTransition shipment.status next)
+    (updatedAt : Timestamp) (hUpdated : shipment.createdAt ≤ updatedAt) :
+    (transitionShipment shipment next h updatedAt hUpdated).id = shipment.id := by
+  rfl
+
 /-- Carrier handoff records the first accepted carrier scan. -/
 structure CarrierHandoff where
   plan : LogisticsShipmentPlan
   service : CarrierService
+  trackingNumber : Id
   handedOffAt : Timestamp
   acceptanceScanAt : Timestamp
   service_matches_quote : service = plan.quote.service
@@ -169,6 +257,11 @@ theorem carrierHandoff_plannedShip_le_handedOff (handoff : CarrierHandoff) :
     handoff.plan.plannedShipAt ≤ handoff.handedOffAt := by
   exact handoff.plannedShip_le_handedOff
 
+/-- Carrier handoff carrier ids match the selected quote carrier. -/
+theorem carrierHandoff_carrier_matches_quote (handoff : CarrierHandoff) :
+    handoff.service.carrierId = handoff.plan.quote.service.carrierId := by
+  rw [handoff.service_matches_quote]
+
 /-- Closed set of tracking event kinds. -/
 inductive TrackingEventKind where
   | LabelCreated
@@ -180,10 +273,35 @@ inductive TrackingEventKind where
   | ReturnScan
 deriving DecidableEq, Repr
 
+/-- Conservative progression relation for tracking event kinds. -/
+inductive CanTrackingProgress : TrackingEventKind → TrackingEventKind → Prop where
+  | label_label :
+      CanTrackingProgress TrackingEventKind.LabelCreated TrackingEventKind.LabelCreated
+  | label_pickup :
+      CanTrackingProgress TrackingEventKind.LabelCreated TrackingEventKind.PickupScan
+  | pickup_inTransit :
+      CanTrackingProgress TrackingEventKind.PickupScan TrackingEventKind.InTransitScan
+  | inTransit_inTransit :
+      CanTrackingProgress TrackingEventKind.InTransitScan TrackingEventKind.InTransitScan
+  | inTransit_outForDelivery :
+      CanTrackingProgress TrackingEventKind.InTransitScan TrackingEventKind.OutForDeliveryScan
+  | inTransit_exception :
+      CanTrackingProgress TrackingEventKind.InTransitScan TrackingEventKind.ExceptionScan
+  | outForDelivery_delivered :
+      CanTrackingProgress TrackingEventKind.OutForDeliveryScan TrackingEventKind.DeliveredScan
+  | outForDelivery_exception :
+      CanTrackingProgress TrackingEventKind.OutForDeliveryScan TrackingEventKind.ExceptionScan
+  | exception_inTransit :
+      CanTrackingProgress TrackingEventKind.ExceptionScan TrackingEventKind.InTransitScan
+  | exception_return :
+      CanTrackingProgress TrackingEventKind.ExceptionScan TrackingEventKind.ReturnScan
+
 /-- A timestamped carrier or warehouse tracking event. -/
 structure TrackingEvent where
   id : TrackingEventId
   shipmentId : ShipmentId
+  carrierId : Id
+  trackingNumber : Id
   kind : TrackingEventKind
   occurredAt : Timestamp
 
@@ -199,10 +317,29 @@ def trackingEventsForShipment (shipmentId : ShipmentId) : List TrackingEvent →
   | event :: rest =>
       event.shipmentId = shipmentId ∧ trackingEventsForShipment shipmentId rest
 
+/-- Tracking events all belong to the requested carrier/tracking number pair. -/
+def trackingEventsForCarrier (carrierId trackingNumber : Id) :
+    List TrackingEvent → Prop
+  | [] => True
+  | event :: rest =>
+      event.carrierId = carrierId ∧ event.trackingNumber = trackingNumber ∧
+        trackingEventsForCarrier carrierId trackingNumber rest
+
 /-- Fold the last observed tracking timestamp out of a tracking event list. -/
 def trackingLastObservedFrom : Timestamp → List TrackingEvent → Timestamp
   | last, [] => last
   | _, event :: rest => trackingLastObservedFrom event.occurredAt rest
+
+/-- Tracking event ids must be unique inside a tracking history. -/
+def trackingEventIdsDistinct (events : List TrackingEvent) : Prop :=
+  (events.map fun event => event.id.value).Nodup
+
+/-- Tracking event kinds must follow the modeled carrier progression. -/
+def trackingEventsProgressFrom : TrackingEventKind → List TrackingEvent → Prop
+  | _lastKind, [] => True
+  | lastKind, event :: rest =>
+      CanTrackingProgress lastKind event.kind ∧
+        trackingEventsProgressFrom event.kind rest
 
 /-- Ordered nonempty tracking histories expose the first timestamp bound. -/
 theorem trackingEventsMonotoneFrom_head
@@ -221,10 +358,15 @@ theorem trackingEventsForShipment_head
 /-- Tracking history with monotone timestamps and a computed cursor. -/
 structure TrackingHistory where
   shipmentId : ShipmentId
+  carrierId : Id
+  trackingNumber : Id
   events : List TrackingEvent
   lastObservedAt : Timestamp
   events_monotone : trackingEventsMonotoneFrom 0 events
   events_match_shipment : trackingEventsForShipment shipmentId events
+  events_match_carrier : trackingEventsForCarrier carrierId trackingNumber events
+  event_ids_distinct : trackingEventIdsDistinct events
+  events_progress : trackingEventsProgressFrom TrackingEventKind.LabelCreated events
   lastObserved_correct : lastObservedAt = trackingLastObservedFrom 0 events
 
 /-- Tracking histories expose their monotone timestamp guarantee. -/
@@ -236,6 +378,21 @@ theorem trackingHistory_events_monotone (history : TrackingHistory) :
 theorem trackingHistory_events_match_shipment (history : TrackingHistory) :
     trackingEventsForShipment history.shipmentId history.events := by
   exact history.events_match_shipment
+
+/-- Tracking histories expose that every event belongs to the tracked carrier/tracking number. -/
+theorem trackingHistory_events_match_carrier (history : TrackingHistory) :
+    trackingEventsForCarrier history.carrierId history.trackingNumber history.events := by
+  exact history.events_match_carrier
+
+/-- Tracking histories expose unique tracking event ids. -/
+theorem trackingHistory_event_ids_distinct (history : TrackingHistory) :
+    trackingEventIdsDistinct history.events := by
+  exact history.event_ids_distinct
+
+/-- Tracking histories expose their semantic tracking-kind progression. -/
+theorem trackingHistory_events_progress (history : TrackingHistory) :
+    trackingEventsProgressFrom TrackingEventKind.LabelCreated history.events := by
+  exact history.events_progress
 
 /-- Tracking histories store the cursor computed from their events. -/
 theorem trackingHistory_lastObserved_correct (history : TrackingHistory) :
@@ -259,10 +416,13 @@ structure DeliveredShipment where
   deliveryEvent : TrackingEvent
   deliveredAt : Timestamp
   history_matches_shipment : history.shipmentId = promise.plan.id
+  history_carrier_matches_quote : history.carrierId = promise.plan.quote.service.carrierId
   delivery_event_in_history : deliveryEvent ∈ history.events
   delivery_event_kind : deliveryEvent.kind = TrackingEventKind.DeliveredScan
   delivery_event_time : deliveryEvent.occurredAt = deliveredAt
   delivery_event_shipment : deliveryEvent.shipmentId = promise.plan.id
+  delivery_event_carrier : deliveryEvent.carrierId = history.carrierId
+  delivery_event_trackingNumber : deliveryEvent.trackingNumber = history.trackingNumber
   shipped_le_delivered : promise.plan.plannedShipAt ≤ deliveredAt
   delivered_by_promise : deliveredByPromise promise deliveredAt
 
@@ -287,9 +447,18 @@ theorem deliveredShipment_has_delivered_scan (shipment : DeliveredShipment) :
     shipment.deliveryEvent.kind = TrackingEventKind.DeliveredScan ∧
       shipment.deliveryEvent.occurredAt = shipment.deliveredAt ∧
       shipment.deliveryEvent.shipmentId = shipment.promise.plan.id ∧
+      shipment.deliveryEvent.carrierId = shipment.history.carrierId ∧
+      shipment.deliveryEvent.trackingNumber = shipment.history.trackingNumber ∧
       shipment.deliveryEvent ∈ shipment.history.events := by
   exact ⟨shipment.delivery_event_kind, shipment.delivery_event_time,
-    shipment.delivery_event_shipment, shipment.delivery_event_in_history⟩
+    shipment.delivery_event_shipment, shipment.delivery_event_carrier,
+    shipment.delivery_event_trackingNumber, shipment.delivery_event_in_history⟩
+
+/-- Delivered shipment tracking history uses the carrier from the selected quote. -/
+theorem deliveredShipment_history_carrier_matches_quote
+    (shipment : DeliveredShipment) :
+    shipment.history.carrierId = shipment.promise.plan.quote.service.carrierId := by
+  exact shipment.history_carrier_matches_quote
 
 /-- Closed set of logistics exception kinds. -/
 inductive LogisticsExceptionKind where
@@ -392,6 +561,35 @@ theorem closedReturnAuthorization_has_no_outgoing
   intro h
   cases h
 
+/-- One SKU-specific line in a return authorization. -/
+structure ReturnLine where
+  sku : Sku
+  quantity : Quantity
+  refundAmount : Money
+
+/-- Sum return quantities across return lines. -/
+def returnLinesQuantityTotal : List ReturnLine → Quantity
+  | [] => 0
+  | line :: rest => line.quantity + returnLinesQuantityTotal rest
+
+/-- Sum return refund amounts across return lines. -/
+def returnLinesRefundTotal : List ReturnLine → Money
+  | [] => 0
+  | line :: rest => line.refundAmount + returnLinesRefundTotal rest
+
+/-- Every return line SKU must correspond to a SKU in the original order cart. -/
+def returnLinesMatchOrderSkus (items : List CartLine) : List ReturnLine → Prop
+  | [] => True
+  | line :: rest =>
+      cartContainsSku line.sku items ∧ returnLinesMatchOrderSkus items rest
+
+/-- Nonempty return-line checks expose the first line's order SKU membership. -/
+theorem returnLinesMatchOrderSkus_head
+    (items : List CartLine) (line : ReturnLine) (rest : List ReturnLine)
+    (h : returnLinesMatchOrderSkus items (line :: rest)) :
+    cartContainsSku line.sku items := by
+  exact h.left
+
 /-- Return authorization linked to a support case, order, and refund ledger. -/
 structure ReturnAuthorization where
   id : ReturnAuthorizationId
@@ -399,11 +597,15 @@ structure ReturnAuthorization where
   order : Order
   ledger : PaymentLedger
   status : ReturnAuthorizationStatus
+  lines : List ReturnLine
   quantity : Quantity
   refundAmount : Money
   requestedAt : Timestamp
   decidedAt : Timestamp
   support_case_matches_order : supportCase.orderId = some order.id
+  lines_match_order_skus : returnLinesMatchOrderSkus order.items lines
+  quantity_correct : returnLinesQuantityTotal lines = quantity
+  refund_correct : returnLinesRefundTotal lines = refundAmount
   quantity_le_order_quantity : quantity ≤ cartQuantityTotal order.items
   refundable : canRefund ledger refundAmount
   captured_matches_order_total : ledger.captured = order.total
@@ -418,6 +620,24 @@ theorem returnAuthorization_quantity_le_order_quantity
     (authorization : ReturnAuthorization) :
     authorization.quantity ≤ cartQuantityTotal authorization.order.items := by
   exact authorization.quantity_le_order_quantity
+
+/-- Return authorization lines all correspond to SKUs on the original order. -/
+theorem returnAuthorization_lines_match_order_skus
+    (authorization : ReturnAuthorization) :
+    returnLinesMatchOrderSkus authorization.order.items authorization.lines := by
+  exact authorization.lines_match_order_skus
+
+/-- Return authorization line quantities total to the stored authorization quantity. -/
+theorem returnAuthorization_quantity_correct
+    (authorization : ReturnAuthorization) :
+    returnLinesQuantityTotal authorization.lines = authorization.quantity := by
+  exact authorization.quantity_correct
+
+/-- Return authorization line refunds total to the stored refund amount. -/
+theorem returnAuthorization_refund_correct
+    (authorization : ReturnAuthorization) :
+    returnLinesRefundTotal authorization.lines = authorization.refundAmount := by
+  exact authorization.refund_correct
 
 /-- Return authorization refunds fit inside the remaining refundable ledger amount. -/
 theorem returnAuthorization_refund_le_remaining
@@ -454,15 +674,57 @@ theorem returnAuthorization_requested_le_decided
     authorization.requestedAt ≤ authorization.decidedAt := by
   exact authorization.requested_le_decided
 
+/-- Transition a return authorization while preserving its quantitative safety evidence. -/
+def transitionReturnAuthorization
+    (authorization : ReturnAuthorization)
+    (next : ReturnAuthorizationStatus)
+    (_h : CanReturnAuthorizationTransition authorization.status next)
+    (decidedAt : Timestamp)
+    (hDecided : authorization.requestedAt ≤ decidedAt) :
+    ReturnAuthorization :=
+  { id := authorization.id
+    supportCase := authorization.supportCase
+    order := authorization.order
+    ledger := authorization.ledger
+    status := next
+    lines := authorization.lines
+    quantity := authorization.quantity
+    refundAmount := authorization.refundAmount
+    requestedAt := authorization.requestedAt
+    decidedAt := decidedAt
+    support_case_matches_order := authorization.support_case_matches_order
+    lines_match_order_skus := authorization.lines_match_order_skus
+    quantity_correct := authorization.quantity_correct
+    refund_correct := authorization.refund_correct
+    quantity_le_order_quantity := authorization.quantity_le_order_quantity
+    refundable := authorization.refundable
+    captured_matches_order_total := authorization.captured_matches_order_total
+    requested_le_decided := hDecided }
+
+/-- Return authorization transitions preserve the authorization identifier. -/
+theorem transitionReturnAuthorization_preserves_id
+    (authorization : ReturnAuthorization) (next : ReturnAuthorizationStatus)
+    (h : CanReturnAuthorizationTransition authorization.status next)
+    (decidedAt : Timestamp) (hDecided : authorization.requestedAt ≤ decidedAt) :
+    (transitionReturnAuthorization authorization next h decidedAt hDecided).id =
+      authorization.id := by
+  rfl
+
 /-- Physical return receipt remains within the approved authorization. -/
 structure ReturnReceipt where
   authorization : ReturnAuthorization
   receivedQuantity : Quantity
   refundIssued : Money
   receivedAt : Timestamp
+  authorization_approved : returnAuthorizationApproved authorization
   received_le_authorized : receivedQuantity ≤ authorization.quantity
   refund_le_authorized : refundIssued ≤ authorization.refundAmount
   decided_le_received : authorization.decidedAt ≤ receivedAt
+
+/-- Return receipts can only be recorded for approved return authorizations. -/
+theorem returnReceipt_authorization_approved (receipt : ReturnReceipt) :
+    receipt.authorization.status = ReturnAuthorizationStatus.Approved := by
+  exact receipt.authorization_approved
 
 /-- Return receipts cannot receive more units than authorized. -/
 theorem returnReceipt_received_le_order_quantity (receipt : ReturnReceipt) :

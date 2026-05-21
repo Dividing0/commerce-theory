@@ -90,6 +90,14 @@ inductive ValidSystemEventStep : ValidSystemState → ValidSystemState → Prop 
       (hRefund : canRefund state.ledger amount) :
       ValidSystemEventStep state
         (applyRefundIssuedEvent state amount hRefund)
+  | crmProjected
+      (state : ValidSystemState) :
+      ValidSystemEventStep state
+        (applyCRMProjectedEvent state)
+  | logisticsProjected
+      (state : ValidSystemState) :
+      ValidSystemEventStep state
+        (applyLogisticsProjectedEvent state)
 
 /-- Valid system replay in exactly `n` accepted state-event steps. -/
 abbrev ValidSystemReplayInSteps :=
@@ -110,6 +118,49 @@ theorem validSystemEventStep_preserves_validity
       exact applyStockReservedEvent_preserves_validity before sku quantity hSku hReserve
   | refundIssued amount hRefund =>
       exact applyRefundIssuedEvent_preserves_validity before amount hRefund
+  | crmProjected =>
+      exact applyCRMProjectedEvent_preserves_validity before
+  | logisticsProjected =>
+      exact applyLogisticsProjectedEvent_preserves_validity before
+
+/-- Event-aware valid-system projection step for core, CRM, and logistics events. -/
+inductive ValidDomainEventStep :
+    DomainEvent → ValidSystemState → ValidSystemState → Prop where
+  | stockReserved
+      (state : ValidSystemState) (sku : Sku) (quantity : Quantity)
+      (hSku : state.stock.sku = sku)
+      (hReserve : canReserve state.stock quantity) :
+      ValidDomainEventStep (DomainEvent.StockReserved sku quantity) state
+        (applyStockReservedEvent state sku quantity hSku hReserve)
+  | refundIssued
+      (state : ValidSystemState) (orderId : OrderId) (amount : Money)
+      (hRefund : canRefund state.ledger amount) :
+      ValidDomainEventStep (DomainEvent.RefundIssued orderId amount) state
+        (applyRefundIssuedEvent state amount hRefund)
+  | crmProjected
+      (event : DomainEvent) (state : ValidSystemState)
+      (hCRM : domainEventIsCRM event) :
+      ValidDomainEventStep event state (applyCRMProjectedEvent state)
+  | logisticsProjected
+      (event : DomainEvent) (state : ValidSystemState)
+      (hLogistics : domainEventIsLogistics event) :
+      ValidDomainEventStep event state (applyLogisticsProjectedEvent state)
+
+/-- Event-aware projection steps preserve stock and ledger validity. -/
+theorem validDomainEventStep_preserves_validity
+    {event : DomainEvent} {before after : ValidSystemState}
+    (h : ValidDomainEventStep event before after) :
+    after.stock.reserved ≤ after.stock.total ∧
+      after.ledger.refunded ≤ after.ledger.captured := by
+  cases h with
+  | stockReserved sku quantity hSku hReserve =>
+      exact applyStockReservedEvent_preserves_validity before sku quantity hSku hReserve
+  | refundIssued orderId amount hRefund =>
+      exact applyRefundIssuedEvent_preserves_validity before amount hRefund
+  | crmProjected hCRM =>
+      exact applyCRMProjectedEvent_preserves_validity before
+  | logisticsProjected hLogistics =>
+      exact applyLogisticsProjectedEvent_preserves_validity before
 
 /-- Any exact-step valid system replay preserves stock and ledger validity. -/
 theorem validSystemReplayInSteps_preserves_validity

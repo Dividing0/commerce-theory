@@ -56,6 +56,11 @@ inductive Action where
   | OverridePrice
   | AdjustStock
   | DeleteOrder
+  | ManageCRM
+  | CreateSupportCase
+  | ResolveSupportCase
+  | ManageShipment
+  | ApproveReturn
 deriving DecidableEq, Repr
 
 /-- Computes or checks `CanPerform` using the validated data in this module. -/
@@ -65,10 +70,18 @@ def CanPerform : Role → Action → Prop
   | Role.Warehouse, Action.PackOrder => True
   | Role.Warehouse, Action.ShipOrder => True
   | Role.Warehouse, Action.AdjustStock => True
+  | Role.Warehouse, Action.ManageShipment => True
   | Role.Manager, Action.ViewOrder => True
   | Role.Manager, Action.OverridePrice => True
+  | Role.Manager, Action.ManageCRM => True
+  | Role.Manager, Action.ResolveSupportCase => True
+  | Role.Manager, Action.ApproveReturn => True
+  | Role.Support, Action.CreateSupportCase => True
+  | Role.Support, Action.ResolveSupportCase => True
+  | Role.Support, Action.ManageCRM => True
   | Role.Finance, Action.ViewOrder => True
   | Role.Finance, Action.IssueRefund => True
+  | Role.Finance, Action.ApproveReturn => True
   | _, _ => False
 
 /-- States the safety property captured by `deleteOrder_requires_admin`. -/
@@ -89,6 +102,21 @@ theorem customer_cannot_issue_refund :
 /-- Warehouse operators can adjust stock, matching their operational boundary. -/
 theorem warehouse_can_adjust_stock :
     CanPerform Role.Warehouse Action.AdjustStock := by
+  simp [CanPerform]
+
+/-- Support operators can create support cases. -/
+theorem support_can_create_support_case :
+    CanPerform Role.Support Action.CreateSupportCase := by
+  simp [CanPerform]
+
+/-- Finance operators can approve returns, matching refund governance. -/
+theorem finance_can_approve_return :
+    CanPerform Role.Finance Action.ApproveReturn := by
+  simp [CanPerform]
+
+/-- Customers cannot manage CRM records in the access-control relation. -/
+theorem customer_cannot_manage_crm :
+    ¬ CanPerform Role.Customer Action.ManageCRM := by
   simp [CanPerform]
 
 /-- Data shape for `AuditEvent`; proof fields record invariants when needed. -/
@@ -125,6 +153,43 @@ theorem auditedCommand_order_logged (cmd : AuditedCommand) :
 
 /-- Any audited command carries proof that its actor may perform its action. -/
 theorem auditedCommand_allowed (cmd : AuditedCommand) :
+    CanPerform cmd.actor cmd.action := by
+  exact cmd.allowed
+
+/-- Entity-scoped audit event for non-order objects such as CRM records and shipments. -/
+structure EntityAuditEvent where
+  actor : Role
+  action : Action
+  subjectId : Id
+
+/-- Audited entity command for CRM and logistics operations. -/
+structure AuditedEntityCommand where
+  actor : Role
+  action : Action
+  subjectId : Id
+  allowed : CanPerform actor action
+  event : EntityAuditEvent
+  event_actor_matches : event.actor = actor
+  event_action_matches : event.action = action
+  event_subject_matches : event.subjectId = subjectId
+
+/-- Audited entity commands record the actor that executed the command. -/
+theorem auditedEntityCommand_actor_logged (cmd : AuditedEntityCommand) :
+    cmd.event.actor = cmd.actor := by
+  exact cmd.event_actor_matches
+
+/-- Audited entity commands record the action that was executed. -/
+theorem auditedEntityCommand_action_logged (cmd : AuditedEntityCommand) :
+    cmd.event.action = cmd.action := by
+  exact cmd.event_action_matches
+
+/-- Audited entity commands record the entity they operated on. -/
+theorem auditedEntityCommand_subject_logged (cmd : AuditedEntityCommand) :
+    cmd.event.subjectId = cmd.subjectId := by
+  exact cmd.event_subject_matches
+
+/-- Any audited entity command carries proof that its actor may perform its action. -/
+theorem auditedEntityCommand_allowed (cmd : AuditedEntityCommand) :
     CanPerform cmd.actor cmd.action := by
   exact cmd.allowed
 

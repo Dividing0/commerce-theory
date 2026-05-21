@@ -18,6 +18,7 @@ inductive OrderEventSymbol where
   | RefundIssued
   | StockReserved
   | OrderShipped
+  | Other
 deriving DecidableEq, Repr
 
 /-- Coarse lifecycle state used by the event-sequence validator. -/
@@ -37,6 +38,11 @@ def domainEventSymbol : DomainEvent → OrderEventSymbol
   | DomainEvent.RefundIssued _ _ => OrderEventSymbol.RefundIssued
   | DomainEvent.StockReserved _ _ => OrderEventSymbol.StockReserved
   | DomainEvent.OrderShipped _ => OrderEventSymbol.OrderShipped
+  | DomainEvent.LeadConverted _ _ => OrderEventSymbol.Other
+  | DomainEvent.SupportCaseOpened _ _ => OrderEventSymbol.Other
+  | DomainEvent.ShipmentPlanned _ _ => OrderEventSymbol.Other
+  | DomainEvent.ShipmentDelivered _ => OrderEventSymbol.Other
+  | DomainEvent.ReturnApproved _ _ _ => OrderEventSymbol.Other
 
 /-- Convert a concrete event stream into the word read by the validator. -/
 def domainEventSymbols (events : List DomainEvent) : List OrderEventSymbol :=
@@ -57,6 +63,8 @@ def orderEventValidationStep :
       OrderEventValidationState.Refunded
   | OrderEventValidationState.Captured, OrderEventSymbol.OrderShipped =>
       OrderEventValidationState.Shipped
+  | state, OrderEventSymbol.Other =>
+      state
   | _, _ =>
       OrderEventValidationState.Invalid
 

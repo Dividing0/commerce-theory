@@ -17,7 +17,25 @@ inductive DomainEvent where
   | RefundIssued : OrderId → Money → DomainEvent
   | StockReserved : Sku → Quantity → DomainEvent
   | OrderShipped : OrderId → DomainEvent
+  | LeadConverted : LeadId → OpportunityId → DomainEvent
+  | SupportCaseOpened : SupportCaseId → Option OrderId → DomainEvent
+  | ShipmentPlanned : ShipmentId → OrderId → DomainEvent
+  | ShipmentDelivered : ShipmentId → DomainEvent
+  | ReturnApproved : ReturnAuthorizationId → OrderId → Money → DomainEvent
 deriving DecidableEq, Repr
+
+/-- CRM events are the domain events projected into CRM read models. -/
+def domainEventIsCRM : DomainEvent → Prop
+  | DomainEvent.LeadConverted _ _ => True
+  | DomainEvent.SupportCaseOpened _ _ => True
+  | _ => False
+
+/-- Logistics events are the domain events projected into logistics read models. -/
+def domainEventIsLogistics : DomainEvent → Prop
+  | DomainEvent.ShipmentPlanned _ _ => True
+  | DomainEvent.ShipmentDelivered _ => True
+  | DomainEvent.ReturnApproved _ _ _ => True
+  | _ => False
 
 /-- Data shape for `EventEnvelope`; proof fields record invariants when needed. -/
 structure EventEnvelope where
@@ -134,6 +152,8 @@ theorem alreadyProcessed_markProcessed_iff
 structure ValidSystemState where
   stock : StockState
   ledger : PaymentLedger
+  crmEventCount : Nat
+  logisticsEventCount : Nat
 
 /-- Apply a stock-reserved event to the validated state when SKU and quantity are valid. -/
 def applyStockReservedEvent
@@ -143,7 +163,9 @@ def applyStockReservedEvent
     (hReserve : canReserve state.stock quantity) :
     ValidSystemState :=
   { stock := reserveStock state.stock quantity hReserve
-    ledger := state.ledger }
+    ledger := state.ledger
+    crmEventCount := state.crmEventCount
+    logisticsEventCount := state.logisticsEventCount }
 
 /-- Applying a stock-reserved event preserves stock and ledger validity. -/
 theorem applyStockReservedEvent_preserves_validity
@@ -164,7 +186,9 @@ def applyRefundIssuedEvent
     (hRefund : canRefund state.ledger amount) :
     ValidSystemState :=
   { stock := state.stock
-    ledger := issueRefund state.ledger amount hRefund }
+    ledger := issueRefund state.ledger amount hRefund
+    crmEventCount := state.crmEventCount
+    logisticsEventCount := state.logisticsEventCount }
 
 /-- Applying a refund-issued event preserves stock and ledger validity. -/
 theorem applyRefundIssuedEvent_preserves_validity
@@ -176,6 +200,49 @@ theorem applyRefundIssuedEvent_preserves_validity
       next.ledger.refunded ≤ next.ledger.captured := by
   simp [applyRefundIssuedEvent, issueRefund_preserves_safety]
   exact state.stock.reserved_le_total
+
+/-- Apply a CRM-domain event projection while preserving stock and payment safety. -/
+def applyCRMProjectedEvent (state : ValidSystemState) : ValidSystemState :=
+  { stock := state.stock
+    ledger := state.ledger
+    crmEventCount := state.crmEventCount + 1
+    logisticsEventCount := state.logisticsEventCount }
+
+/-- CRM projected events preserve stock and ledger validity. -/
+theorem applyCRMProjectedEvent_preserves_validity
+    (state : ValidSystemState) :
+    let next := applyCRMProjectedEvent state
+    next.stock.reserved ≤ next.stock.total ∧
+      next.ledger.refunded ≤ next.ledger.captured := by
+  simp [applyCRMProjectedEvent]
+  exact ⟨state.stock.reserved_le_total, state.ledger.refunded_le_captured⟩
+
+/-- Applying a CRM projected event increments the CRM event counter. -/
+theorem applyCRMProjectedEvent_increments_count (state : ValidSystemState) :
+    (applyCRMProjectedEvent state).crmEventCount = state.crmEventCount + 1 := by
+  rfl
+
+/-- Apply a logistics-domain event projection while preserving stock and payment safety. -/
+def applyLogisticsProjectedEvent (state : ValidSystemState) : ValidSystemState :=
+  { stock := state.stock
+    ledger := state.ledger
+    crmEventCount := state.crmEventCount
+    logisticsEventCount := state.logisticsEventCount + 1 }
+
+/-- Logistics projected events preserve stock and ledger validity. -/
+theorem applyLogisticsProjectedEvent_preserves_validity
+    (state : ValidSystemState) :
+    let next := applyLogisticsProjectedEvent state
+    next.stock.reserved ≤ next.stock.total ∧
+      next.ledger.refunded ≤ next.ledger.captured := by
+  simp [applyLogisticsProjectedEvent]
+  exact ⟨state.stock.reserved_le_total, state.ledger.refunded_le_captured⟩
+
+/-- Applying a logistics projected event increments the logistics event counter. -/
+theorem applyLogisticsProjectedEvent_increments_count (state : ValidSystemState) :
+    (applyLogisticsProjectedEvent state).logisticsEventCount =
+      state.logisticsEventCount + 1 := by
+  rfl
 
 /--
 A representative preservation theorem: reserving stock and issuing a valid
@@ -190,7 +257,11 @@ theorem reserve_and_refund_preserve_validity
       next.stock.reserved ≤ next.stock.total ∧ next.ledger.refunded ≤ next.ledger.captured := by
   let nextStock := reserveStock state.stock reserveQty hReserve
   let nextLedger := issueRefund state.ledger refundAmount hRefund
-  refine ⟨{ stock := nextStock, ledger := nextLedger }, ?_⟩
+  refine ⟨{
+    stock := nextStock
+    ledger := nextLedger
+    crmEventCount := state.crmEventCount
+    logisticsEventCount := state.logisticsEventCount }, ?_⟩
   constructor
   · exact nextStock.reserved_le_total
   · exact nextLedger.refunded_le_captured

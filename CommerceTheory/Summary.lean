@@ -307,10 +307,46 @@ theorem valid_system_replay_preserves_safety
       after.ledger.refunded ≤ after.ledger.captured := by
   exact validSystemReplayInSteps_preserves_validity h
 
+/-- Event-aware domain projection steps preserve core stock and ledger safety. -/
+theorem valid_domain_event_step_preserves_safety
+    {event : DomainEvent} {before after : ValidSystemState}
+    (h : ValidDomainEventStep event before after) :
+    after.stock.reserved ≤ after.stock.total ∧
+      after.ledger.refunded ≤ after.ledger.captured := by
+  exact validDomainEventStep_preserves_validity h
+
+/-- CRM projected events preserve core valid-system safety and increment the CRM counter. -/
+theorem crm_projected_event_safety (state : ValidSystemState) :
+    let next := applyCRMProjectedEvent state
+    next.stock.reserved ≤ next.stock.total ∧
+      next.ledger.refunded ≤ next.ledger.captured ∧
+      next.crmEventCount = state.crmEventCount + 1 := by
+  simp [applyCRMProjectedEvent]
+  exact ⟨state.stock.reserved_le_total, state.ledger.refunded_le_captured⟩
+
+/-- Logistics projected events preserve core valid-system safety and increment the logistics counter. -/
+theorem logistics_projected_event_safety (state : ValidSystemState) :
+    let next := applyLogisticsProjectedEvent state
+    next.stock.reserved ≤ next.stock.total ∧
+      next.ledger.refunded ≤ next.ledger.captured ∧
+      next.logisticsEventCount = state.logisticsEventCount + 1 := by
+  simp [applyLogisticsProjectedEvent]
+  exact ⟨state.stock.reserved_le_total, state.ledger.refunded_le_captured⟩
+
 /-- The coarse order-event validator accepts a regular language. -/
 theorem order_event_validator_language_regular :
     (Cslib.Automata.Acceptor.language orderEventValidator).IsRegular := by
   exact orderEventValidator_language_regular
+
+/-- Entity-scoped audited commands prove actor, action, subject, and permission evidence. -/
+theorem audited_entity_command_safety
+    (cmd : AuditedEntityCommand) :
+    cmd.event.actor = cmd.actor ∧
+      cmd.event.action = cmd.action ∧
+      cmd.event.subjectId = cmd.subjectId ∧
+      CanPerform cmd.actor cmd.action := by
+  exact ⟨cmd.event_actor_matches, cmd.event_action_matches,
+    cmd.event_subject_matches, cmd.allowed⟩
 
 /-- CSLib `TimeM` allocation summation preserves the existing allocation safety bound. -/
 theorem timed_allocation_total_safety (allocations : List Allocation) :
@@ -335,6 +371,20 @@ theorem crm_pipeline_weighted_value_safety
     opportunityWeightedValueTotal opportunities ≤ opportunityGrossValue opportunities := by
   exact opportunityWeightedValueTotal_le_grossValue opportunities
 
+/-- Active CRM accounts expose active status and balance safety. -/
+theorem active_crm_account_safety
+    (account : ActiveCRMAccount) :
+    account.account.status = CRMAccountStatus.Active ∧
+      account.account.openBalance ≤ account.account.lifetimeValue := by
+  exact ⟨account.active, account.account.openBalance_le_lifetimeValue⟩
+
+/-- Valid CRM account/contact pairs preserve account and customer identity. -/
+theorem crm_account_contact_identity_safety
+    (x : CRMAccountContact) :
+    x.contact.accountId = x.account.id ∧
+      x.contact.customerId = x.account.customer.id := by
+  exact ⟨x.contact_account_matches, x.contact_customer_matches⟩
+
 /-- Permitted CRM customer messages carry all outreach permission gates. -/
 theorem crm_contact_permission_safety
     (message : PermittedCustomerMessage) :
@@ -350,18 +400,26 @@ theorem crm_support_case_sla_safety
     (case_ : ResolvedSupportCase) :
     case_.case_.status = SupportCaseStatus.Resolved ∧
       case_.case_.openedAt ≤ case_.resolvedAt ∧
+      case_.case_.lastUpdatedAt ≤ case_.resolvedAt ∧
       case_.resolvedAt ≤ case_.case_.slaDueAt := by
-  exact ⟨case_.status_resolved, case_.opened_le_resolved, case_.resolved_by_sla⟩
+  exact ⟨case_.status_resolved, case_.opened_le_resolved,
+    case_.lastUpdated_le_resolved, case_.resolved_by_sla⟩
 
 /-- CRM retention offers stay inside account value and segment caps. -/
 theorem crm_retention_offer_value_safety
     (offer : RetentionOffer) :
+    offer.account.status = CRMAccountStatus.Active ∧
     offer.discount ≤ offer.account.lifetimeValue ∧
       offer.discount ≤ offer.segment.maxRetentionDiscount ∧
-      offer.segment.minLifetimeValue ≤ offer.account.lifetimeValue := by
-  exact ⟨retentionOffer_discount_le_lifetimeValue offer,
+      offer.segment.minLifetimeValue ≤ offer.account.lifetimeValue ∧
+      offer.coupon.minSubtotal ≤ offer.account.lifetimeValue ∧
+      offer.usesBefore < offer.coupon.maxUses := by
+  exact ⟨retentionOffer_account_active offer,
+    retentionOffer_discount_le_lifetimeValue offer,
     retentionOffer_discount_le_segment_cap offer,
-    retentionOffer_account_meets_segment_value_floor offer⟩
+    retentionOffer_account_meets_segment_value_floor offer,
+    retentionOffer_coupon_minSubtotal_met offer,
+    retentionOffer_coupon_usage_below_max offer⟩
 
 /-- Currency-consistent CRM pipelines keep weighted value below gross value. -/
 theorem crm_sales_pipeline_safety
@@ -377,33 +435,120 @@ theorem crm_converted_lead_opportunity_safety
     (conversion : ConvertedLeadOpportunity) :
     conversion.lead.status = LeadStatus.Converted ∧
       conversion.opportunity.sourceLead = some conversion.lead.id ∧
+      conversion.opportunity.accountId = conversion.lead.accountId ∧
+      conversion.opportunity.contactId = conversion.lead.contactId ∧
+      conversion.opportunity.currency = conversion.lead.currency ∧
       conversion.opportunity.amount ≤ conversion.lead.estimatedValue := by
   exact ⟨conversion.lead_converted, conversion.opportunity_source_matches,
+    conversion.account_matches, conversion.contact_matches, conversion.currency_matches,
     conversion.opportunity_amount_le_estimate⟩
+
+/-- Validated CRM interactions preserve account/contact identity and follow-up ordering. -/
+theorem crm_interaction_identity_safety
+    (interaction : CRMInteractionForContact) :
+    interaction.interaction.accountId = interaction.accountContact.account.id ∧
+      interaction.interaction.contactId = interaction.accountContact.contact.id ∧
+      interaction.interaction.occurredAt ≤ interaction.interaction.followUpDueAt := by
+  exact ⟨interaction.interaction_account_matches,
+    interaction.interaction_contact_matches,
+    interaction.interaction.followUp_after_occurrence⟩
+
+/-- Validated CRM leads preserve account/contact identity and timestamp ordering. -/
+theorem crm_lead_identity_safety
+    (lead : LeadForContact) :
+    lead.lead.accountId = lead.accountContact.account.id ∧
+      lead.lead.contactId = lead.accountContact.contact.id ∧
+      lead.lead.createdAt ≤ lead.lead.updatedAt := by
+  exact ⟨lead.lead_account_matches, lead.lead_contact_matches,
+    lead.lead.created_le_updated⟩
+
+/-- Validated opportunities preserve account/contact identity, stage probability, and timing. -/
+theorem crm_opportunity_identity_safety
+    (opportunity : OpportunityForContact) :
+    opportunity.opportunity.accountId = opportunity.accountContact.account.id ∧
+      opportunity.opportunity.contactId = opportunity.accountContact.contact.id ∧
+      opportunityStageProbabilityAllowed
+        opportunity.opportunity.stage opportunity.opportunity.probability ∧
+      opportunity.opportunity.openedAt ≤ opportunity.opportunity.updatedAt ∧
+      opportunity.opportunity.openedAt ≤ opportunity.opportunity.expectedCloseAt := by
+  exact ⟨opportunity.opportunity_account_matches,
+    opportunity.opportunity_contact_matches,
+    opportunity.opportunity.probability_matches_stage,
+    opportunity.opportunity.opened_le_updated,
+    opportunity.opportunity.opened_le_expectedClose⟩
+
+/-- Validated support cases preserve account/contact identity and base timing. -/
+theorem crm_support_case_identity_safety
+    (case_ : SupportCaseForContact) :
+    case_.case_.accountId = case_.accountContact.account.id ∧
+      case_.case_.contactId = case_.accountContact.contact.id ∧
+      case_.case_.openedAt ≤ case_.case_.lastUpdatedAt ∧
+      case_.case_.openedAt ≤ case_.case_.slaDueAt := by
+  exact ⟨case_.case_account_matches, case_.case_contact_matches,
+    case_.case_.opened_le_lastUpdated, case_.case_.opened_le_slaDue⟩
 
 /-- Logistics shipment plans prove carrier capacity, quote price, and allocation safety. -/
 theorem logistics_shipment_plan_safety
     (plan : LogisticsShipmentPlan) :
     orderEligibleForLogistics plan.order ∧
+      allocationKeysDistinct plan.fulfillment.allocations ∧
+      allocationsMatchCartSkus plan.order.items plan.fulfillment.allocations ∧
+      allocationsUseWarehouse plan.warehouse plan.fulfillment.allocations ∧
+      plan.quote.service.zone = plan.destination.zone ∧
       cartWeightTotal plan.order.items ≤ plan.package.weight ∧
       plan.package.weight ≤ plan.quote.service.maxWeight ∧
       plan.quote.service.baseCost ≤ plan.quote.price ∧
       plan.fulfillment.requested ≤ allocationsAvailableTotal plan.fulfillment.allocations := by
-  exact ⟨plan.order_eligible, plan.package_covers_cart_weight,
+  exact ⟨plan.order_eligible, plan.fulfillment.allocation_keys_distinct,
+    plan.allocations_match_cart_skus, plan.allocations_use_warehouse,
+    plan.quote_zone_matches_destination, plan.package_covers_cart_weight,
     shipmentPlan_package_weight_safe plan,
     shipmentPlan_quote_price_covers_base_cost plan,
     shipmentPlan_requested_le_availableTotal plan⟩
+
+/-- Concrete logistics shipments preserve plan identity and timestamp ordering. -/
+theorem logistics_shipment_identity_safety
+    (shipment : LogisticsShipment) :
+    shipment.id = shipment.plan.id ∧ shipment.createdAt ≤ shipment.updatedAt := by
+  exact ⟨shipment.id_matches_plan, shipment.created_le_updated⟩
+
+/-- Carrier handoffs preserve quote service identity and timestamp order. -/
+theorem logistics_carrier_handoff_safety
+    (handoff : CarrierHandoff) :
+    handoff.service = handoff.plan.quote.service ∧
+      handoff.service.carrierId = handoff.plan.quote.service.carrierId ∧
+      handoff.plan.plannedShipAt ≤ handoff.handedOffAt ∧
+      handoff.handedOffAt ≤ handoff.acceptanceScanAt := by
+  exact ⟨handoff.service_matches_quote, carrierHandoff_carrier_matches_quote handoff,
+    handoff.plannedShip_le_handedOff,
+    handoff.handedOff_le_acceptanceScan⟩
+
+/-- Tracking histories preserve timestamp order, shipment identity, unique ids, and kind progression. -/
+theorem logistics_tracking_history_safety
+    (history : TrackingHistory) :
+    trackingEventsMonotoneFrom 0 history.events ∧
+      trackingEventsForShipment history.shipmentId history.events ∧
+      trackingEventsForCarrier history.carrierId history.trackingNumber history.events ∧
+      trackingEventIdsDistinct history.events ∧
+      trackingEventsProgressFrom TrackingEventKind.LabelCreated history.events := by
+  exact ⟨history.events_monotone, history.events_match_shipment,
+    history.events_match_carrier, history.event_ids_distinct, history.events_progress⟩
 
 /-- Delivered logistics shipments meet the promised window and include a delivery scan. -/
 theorem logistics_delivery_promise_safety
     (shipment : DeliveredShipment) :
     shipment.promise.plan.plannedShipAt ≤ shipment.deliveredAt ∧
       shipment.deliveredAt ≤ shipment.promise.plan.promisedDeliveryAt ∧
+      shipment.history.carrierId = shipment.promise.plan.quote.service.carrierId ∧
       shipment.deliveryEvent.kind = TrackingEventKind.DeliveredScan ∧
+      shipment.deliveryEvent.carrierId = shipment.history.carrierId ∧
+      shipment.deliveryEvent.trackingNumber = shipment.history.trackingNumber ∧
       shipment.deliveryEvent ∈ shipment.history.events := by
   exact ⟨shipment.shipped_le_delivered,
     deliveredShipment_deliveredAt_le_plan_promised shipment,
-    shipment.delivery_event_kind, shipment.delivery_event_in_history⟩
+    shipment.history_carrier_matches_quote,
+    shipment.delivery_event_kind, shipment.delivery_event_carrier,
+    shipment.delivery_event_trackingNumber, shipment.delivery_event_in_history⟩
 
 /-- Warehouse transfers stay inside source availability and in-transit quantities. -/
 theorem logistics_transfer_stock_safety
@@ -419,12 +564,30 @@ theorem logistics_transfer_stock_safety
 /-- Return authorizations stay inside order quantity and refundable ledger amount. -/
 theorem logistics_return_authorization_safety
     (authorization : ReturnAuthorization) :
-    authorization.quantity ≤ cartQuantityTotal authorization.order.items ∧
+    returnLinesMatchOrderSkus authorization.order.items authorization.lines ∧
+      returnLinesQuantityTotal authorization.lines = authorization.quantity ∧
+      returnLinesRefundTotal authorization.lines = authorization.refundAmount ∧
+      authorization.quantity ≤ cartQuantityTotal authorization.order.items ∧
       authorization.refundAmount ≤ remainingRefundAmount authorization.ledger ∧
       authorization.refundAmount ≤ authorization.order.total := by
-  exact ⟨authorization.quantity_le_order_quantity,
+  exact ⟨authorization.lines_match_order_skus, authorization.quantity_correct,
+    authorization.refund_correct, authorization.quantity_le_order_quantity,
     returnAuthorization_refund_le_remaining authorization,
     returnAuthorization_refund_le_order_total authorization⟩
+
+/-- Return receipts require approval and stay within quantity, refund, and timing bounds. -/
+theorem logistics_return_receipt_safety
+    (receipt : ReturnReceipt) :
+    receipt.authorization.status = ReturnAuthorizationStatus.Approved ∧
+      receipt.receivedQuantity ≤ cartQuantityTotal receipt.authorization.order.items ∧
+      receipt.refundIssued ≤ remainingRefundAmount receipt.authorization.ledger ∧
+      receipt.refundIssued ≤ receipt.authorization.order.total ∧
+      receipt.authorization.decidedAt ≤ receipt.receivedAt := by
+  exact ⟨receipt.authorization_approved,
+    returnReceipt_received_le_order_quantity receipt,
+    returnReceipt_refund_le_remaining receipt,
+    returnReceipt_refund_le_order_total receipt,
+    receipt.decided_le_received⟩
 
 /-- Shipments tied to CRM orders preserve order identity and shipment capacity safety. -/
 theorem shipment_for_crm_order_safety

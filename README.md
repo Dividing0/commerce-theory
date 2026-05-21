@@ -45,10 +45,11 @@ opportunity selection, CRM, and logistics.
   stacking, search results, and recommendation safety.
 - `CommerceTheory/FulfillmentFinance.lean`: FX, tax, shipping zones, carrier
   quotes, package limits, and reconciliation tolerance.
-- `CommerceTheory/RiskPrivacy.lean`: fraud limits, roles, actions, audit events,
-  consent purposes, and processing bases.
-- `CommerceTheory/EventSourcing.lean`: domain events, envelopes, streams,
-  webhooks, idempotency, and state-validity preservation.
+- `CommerceTheory/RiskPrivacy.lean`: fraud limits, roles, CRM/logistics actions,
+  order and entity audit events, consent purposes, and processing bases.
+- `CommerceTheory/EventSourcing.lean`: order, CRM, and logistics domain events,
+  envelopes, streams, webhooks, idempotency, projected event counters, and
+  state-validity preservation.
 - `CommerceTheory/EventLanguage.lean`: CSLib deterministic automaton and regular
   language for coarse order-event sequence validation.
 - `CommerceTheory/EventReplay.lean`: CSLib bounded step relations for webhook
@@ -62,14 +63,15 @@ opportunity selection, CRM, and logistics.
   CRM/logistics joins.
 - `CommerceTheory/PostPurchase.lean`: subscriptions, gift cards, chargebacks, and
   cashflow plans.
-- `CommerceTheory/CRM.lean`: accounts, validated account/contact links, lead and
-  opportunity lifecycles, currency-consistent pipelines, consent-scoped
-  permitted messaging, segmentation, support cases, and retention offers.
+- `CommerceTheory/CRM.lean`: account/contact identity, account/lead/opportunity
+  transitions, stage-aware opportunity probability, currency-consistent
+  pipelines, consent-scoped messaging, support cases, and retention offers.
 - `CommerceTheory/Forecasting.lean`: forecast confidence, replenishment gates,
   supplier quality metrics, and supplier risk policy.
-- `CommerceTheory/Logistics.lean`: eligible-order shipment plans, carrier
-  handoff, tracking history with delivery scans, delivery promises, exceptions,
-  warehouse transfers, and order-bound return authorizations.
+- `CommerceTheory/Logistics.lean`: eligible-order, SKU-aware distinct shipment
+  plans, destination zone matching, carrier handoff, tracking histories with
+  carrier/tracking identity, delivery scans, warehouse transfers, and SKU-aware
+  order-bound returns.
 - `CommerceTheory/InventoryAlgorithms.lean`: CSLib `TimeM` inventory allocation
   algorithms with explicit operation counts.
 - `CommerceTheory/KeyedTotals.lean`: CSLib finite-support keyed allocation totals.
@@ -142,8 +144,9 @@ validated structures. Theorems then expose the reusable guarantees, such as:
 - refunds never exceed captured payments;
 - marketplace payouts never exceed gross marketplace revenue;
 - dropship offers preserve their stated minimum profit;
-- CRM outreach, support, retention, shipment, transfer, and return flows expose
-  their permission, SLA, capacity, stock, and refund bounds.
+- CRM outreach, account/contact linkage, support, retention, shipment, transfer,
+  event projection, audit, and return flows expose their identity, permission,
+  SLA, capacity, stock, tracking, and refund bounds.
 
 ## CSLib Integration
 

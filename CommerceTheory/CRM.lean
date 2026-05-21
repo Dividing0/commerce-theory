@@ -26,6 +26,27 @@ inductive CRMAccountStatus where
   | Closed
 deriving DecidableEq, Repr
 
+/-- Allowed CRM account lifecycle transitions. -/
+inductive CanCRMAccountTransition : CRMAccountStatus → CRMAccountStatus → Prop where
+  | prospect_active :
+      CanCRMAccountTransition CRMAccountStatus.Prospect CRMAccountStatus.Active
+  | prospect_closed :
+      CanCRMAccountTransition CRMAccountStatus.Prospect CRMAccountStatus.Closed
+  | active_paused :
+      CanCRMAccountTransition CRMAccountStatus.Active CRMAccountStatus.Paused
+  | active_closed :
+      CanCRMAccountTransition CRMAccountStatus.Active CRMAccountStatus.Closed
+  | paused_active :
+      CanCRMAccountTransition CRMAccountStatus.Paused CRMAccountStatus.Active
+  | paused_closed :
+      CanCRMAccountTransition CRMAccountStatus.Paused CRMAccountStatus.Closed
+
+/-- Closed CRM accounts are terminal in the modeled account workflow. -/
+theorem closedCRMAccount_has_no_outgoing (next : CRMAccountStatus) :
+    ¬ CanCRMAccountTransition CRMAccountStatus.Closed next := by
+  intro h
+  cases h
+
 /-- A CRM account linked to an existing commerce customer profile. -/
 structure CRMAccount where
   id : AccountId
@@ -54,6 +75,35 @@ structure ActiveCRMAccount where
 theorem activeCRMAccount_status_active (account : ActiveCRMAccount) :
     account.account.status = CRMAccountStatus.Active := by
   exact account.active
+
+/-- Transition a CRM account while preserving its value safety invariant. -/
+def transitionCRMAccount
+    (account : CRMAccount)
+    (next : CRMAccountStatus)
+    (_h : CanCRMAccountTransition account.status next) :
+    CRMAccount :=
+  { id := account.id
+    customer := account.customer
+    tier := account.tier
+    status := next
+    lifetimeValue := account.lifetimeValue
+    openBalance := account.openBalance
+    openBalance_le_lifetimeValue := account.openBalance_le_lifetimeValue }
+
+/-- CRM account transitions preserve the account identifier. -/
+theorem transitionCRMAccount_preserves_id
+    (account : CRMAccount) (next : CRMAccountStatus)
+    (h : CanCRMAccountTransition account.status next) :
+    (transitionCRMAccount account next h).id = account.id := by
+  rfl
+
+/-- CRM account transitions preserve open-balance safety. -/
+theorem transitionCRMAccount_preserves_balance_safety
+    (account : CRMAccount) (next : CRMAccountStatus)
+    (h : CanCRMAccountTransition account.status next) :
+    (transitionCRMAccount account next h).openBalance ≤
+      (transitionCRMAccount account next h).lifetimeValue := by
+  exact (transitionCRMAccount account next h).openBalance_le_lifetimeValue
 
 /-- Closed set of contact types attached to a CRM account. -/
 inductive ContactKind where
@@ -132,6 +182,25 @@ theorem permittedMessage_consent_basis (message : PermittedCustomerMessage) :
     message.contact.dataPermission.basis = ProcessingBasis.Consent := by
   exact message.permitted.right.right.right.right
 
+/-- A permitted message tied to a validated account/contact pair. -/
+structure PermittedAccountMessage where
+  accountContact : CRMAccountContact
+  message : PermittedCustomerMessage
+  message_contact_matches : message.contact = accountContact.contact
+
+/-- Account-scoped permitted messages target the validated CRM contact. -/
+theorem permittedAccountMessage_contact_matches (message : PermittedAccountMessage) :
+    message.message.contact = message.accountContact.contact := by
+  exact message.message_contact_matches
+
+/-- Account-scoped permitted messages inherit the outreach permission gates. -/
+theorem permittedAccountMessage_processing_allowed
+    (message : PermittedAccountMessage) :
+    dataProcessingAllowed message.accountContact.contact.dataPermission := by
+  have h := permittedMessage_processing_allowed message.message
+  rw [message.message_contact_matches] at h
+  exact h
+
 /-- Closed set of CRM interaction types. -/
 inductive InteractionKind where
   | Email
@@ -156,6 +225,25 @@ structure CRMInteraction where
 theorem crmInteraction_followUp_after_occurrence (interaction : CRMInteraction) :
     interaction.occurredAt ≤ interaction.followUpDueAt := by
   exact interaction.followUp_after_occurrence
+
+/-- A CRM interaction tied to a validated account/contact pair. -/
+structure CRMInteractionForContact where
+  accountContact : CRMAccountContact
+  interaction : CRMInteraction
+  interaction_account_matches : interaction.accountId = accountContact.account.id
+  interaction_contact_matches : interaction.contactId = accountContact.contact.id
+
+/-- Validated CRM interactions match the owning account. -/
+theorem crmInteractionForContact_account_matches
+    (interaction : CRMInteractionForContact) :
+    interaction.interaction.accountId = interaction.accountContact.account.id := by
+  exact interaction.interaction_account_matches
+
+/-- Validated CRM interactions match the owning contact. -/
+theorem crmInteractionForContact_contact_matches
+    (interaction : CRMInteractionForContact) :
+    interaction.interaction.contactId = interaction.accountContact.contact.id := by
+  exact interaction.interaction_contact_matches
 
 /-- Closed set of lead lifecycle states. -/
 inductive LeadStatus where
@@ -205,6 +293,59 @@ theorem lead_created_le_updated (lead : Lead) :
     lead.createdAt ≤ lead.updatedAt := by
   exact lead.created_le_updated
 
+/-- Transition a lead while preserving account, contact, and creation metadata. -/
+def transitionLead
+    (lead : Lead)
+    (next : LeadStatus)
+    (_h : CanLeadTransition lead.status next)
+    (updatedAt : Timestamp)
+    (hUpdated : lead.createdAt ≤ updatedAt) :
+    Lead :=
+  { id := lead.id
+    accountId := lead.accountId
+    contactId := lead.contactId
+    sourceCampaign := lead.sourceCampaign
+    status := next
+    estimatedValue := lead.estimatedValue
+    currency := lead.currency
+    createdAt := lead.createdAt
+    updatedAt := updatedAt
+    created_le_updated := hUpdated }
+
+/-- Lead transitions preserve the lead identifier. -/
+theorem transitionLead_preserves_id
+    (lead : Lead) (next : LeadStatus)
+    (h : CanLeadTransition lead.status next)
+    (updatedAt : Timestamp) (hUpdated : lead.createdAt ≤ updatedAt) :
+    (transitionLead lead next h updatedAt hUpdated).id = lead.id := by
+  rfl
+
+/-- Lead transitions preserve timestamp ordering. -/
+theorem transitionLead_preserves_timestamp_safety
+    (lead : Lead) (next : LeadStatus)
+    (h : CanLeadTransition lead.status next)
+    (updatedAt : Timestamp) (hUpdated : lead.createdAt ≤ updatedAt) :
+    (transitionLead lead next h updatedAt hUpdated).createdAt ≤
+      (transitionLead lead next h updatedAt hUpdated).updatedAt := by
+  exact (transitionLead lead next h updatedAt hUpdated).created_le_updated
+
+/-- A CRM lead tied to a validated account/contact pair. -/
+structure LeadForContact where
+  accountContact : CRMAccountContact
+  lead : Lead
+  lead_account_matches : lead.accountId = accountContact.account.id
+  lead_contact_matches : lead.contactId = accountContact.contact.id
+
+/-- Validated CRM leads match the owning account. -/
+theorem leadForContact_account_matches (lead : LeadForContact) :
+    lead.lead.accountId = lead.accountContact.account.id := by
+  exact lead.lead_account_matches
+
+/-- Validated CRM leads match the owning contact. -/
+theorem leadForContact_contact_matches (lead : LeadForContact) :
+    lead.lead.contactId = lead.accountContact.contact.id := by
+  exact lead.lead_contact_matches
+
 /-- Closed set of opportunity pipeline stages. -/
 inductive OpportunityStage where
   | Prospecting
@@ -246,6 +387,14 @@ theorem lostOpportunity_has_no_outgoing (next : OpportunityStage) :
   intro h
   cases h
 
+/-- Stage-level policy for opportunity close probability. -/
+def opportunityStageProbabilityAllowed
+    (stage : OpportunityStage) (probability : BasisPoints) : Prop :=
+  match stage with
+  | OpportunityStage.Won => probability.value = 10000
+  | OpportunityStage.Lost => probability.value = 0
+  | _ => True
+
 /-- A sales opportunity with probability stored as bounded basis points. -/
 structure SalesOpportunity where
   id : OpportunityId
@@ -261,6 +410,12 @@ structure SalesOpportunity where
   expectedCloseAt : Timestamp
   opened_le_updated : openedAt ≤ updatedAt
   opened_le_expectedClose : openedAt ≤ expectedCloseAt
+  probability_matches_stage : opportunityStageProbabilityAllowed stage probability
+
+/-- Opportunity probabilities respect the stage-level probability policy. -/
+theorem opportunity_probability_matches_stage (opportunity : SalesOpportunity) :
+    opportunityStageProbabilityAllowed opportunity.stage opportunity.probability := by
+  exact opportunity.probability_matches_stage
 
 /-- Weighted pipeline value floors `amount * probability / 10000`. -/
 def opportunityWeightedValue (opportunity : SalesOpportunity) : Money :=
@@ -280,6 +435,64 @@ theorem opportunity_opened_le_updated (opportunity : SalesOpportunity) :
 theorem opportunity_opened_le_expectedClose (opportunity : SalesOpportunity) :
     opportunity.openedAt ≤ opportunity.expectedCloseAt := by
   exact opportunity.opened_le_expectedClose
+
+/-- Transition an opportunity while requiring fresh probability evidence for the next stage. -/
+def transitionOpportunity
+    (opportunity : SalesOpportunity)
+    (next : OpportunityStage)
+    (_h : CanOpportunityTransition opportunity.stage next)
+    (probability : BasisPoints)
+    (hProbability : opportunityStageProbabilityAllowed next probability)
+    (updatedAt expectedCloseAt : Timestamp)
+    (hUpdated : opportunity.openedAt ≤ updatedAt)
+    (hExpected : opportunity.openedAt ≤ expectedCloseAt) :
+    SalesOpportunity :=
+  { id := opportunity.id
+    accountId := opportunity.accountId
+    contactId := opportunity.contactId
+    sourceLead := opportunity.sourceLead
+    stage := next
+    amount := opportunity.amount
+    currency := opportunity.currency
+    probability := probability
+    openedAt := opportunity.openedAt
+    updatedAt := updatedAt
+    expectedCloseAt := expectedCloseAt
+    opened_le_updated := hUpdated
+    opened_le_expectedClose := hExpected
+    probability_matches_stage := hProbability }
+
+/-- Opportunity transitions preserve the opportunity identifier. -/
+theorem transitionOpportunity_preserves_id
+    (opportunity : SalesOpportunity) (next : OpportunityStage)
+    (h : CanOpportunityTransition opportunity.stage next)
+    (probability : BasisPoints)
+    (hProbability : opportunityStageProbabilityAllowed next probability)
+    (updatedAt expectedCloseAt : Timestamp)
+    (hUpdated : opportunity.openedAt ≤ updatedAt)
+    (hExpected : opportunity.openedAt ≤ expectedCloseAt) :
+    (transitionOpportunity opportunity next h probability hProbability
+      updatedAt expectedCloseAt hUpdated hExpected).id = opportunity.id := by
+  rfl
+
+/-- A sales opportunity tied to a validated account/contact pair. -/
+structure OpportunityForContact where
+  accountContact : CRMAccountContact
+  opportunity : SalesOpportunity
+  opportunity_account_matches : opportunity.accountId = accountContact.account.id
+  opportunity_contact_matches : opportunity.contactId = accountContact.contact.id
+
+/-- Validated opportunities match the owning account. -/
+theorem opportunityForContact_account_matches
+    (opportunity : OpportunityForContact) :
+    opportunity.opportunity.accountId = opportunity.accountContact.account.id := by
+  exact opportunity.opportunity_account_matches
+
+/-- Validated opportunities match the owning contact. -/
+theorem opportunityForContact_contact_matches
+    (opportunity : OpportunityForContact) :
+    opportunity.opportunity.contactId = opportunity.accountContact.contact.id := by
+  exact opportunity.opportunity_contact_matches
 
 /-- Sum gross opportunity amounts across a pipeline. -/
 def opportunityGrossValue : List SalesOpportunity → Money
@@ -422,12 +635,58 @@ theorem supportCase_opened_le_slaDue (case_ : SupportCase) :
     case_.openedAt ≤ case_.slaDueAt := by
   exact case_.opened_le_slaDue
 
+/-- Transition a support case while preserving its identity and SLA due date. -/
+def transitionSupportCase
+    (case_ : SupportCase)
+    (next : SupportCaseStatus)
+    (_h : CanSupportCaseTransition case_.status next)
+    (updatedAt : Timestamp)
+    (hUpdated : case_.openedAt ≤ updatedAt) :
+    SupportCase :=
+  { id := case_.id
+    accountId := case_.accountId
+    contactId := case_.contactId
+    orderId := case_.orderId
+    status := next
+    priority := case_.priority
+    openedAt := case_.openedAt
+    lastUpdatedAt := updatedAt
+    slaDueAt := case_.slaDueAt
+    opened_le_lastUpdated := hUpdated
+    opened_le_slaDue := case_.opened_le_slaDue }
+
+/-- Support case transitions preserve the support case identifier. -/
+theorem transitionSupportCase_preserves_id
+    (case_ : SupportCase) (next : SupportCaseStatus)
+    (h : CanSupportCaseTransition case_.status next)
+    (updatedAt : Timestamp) (hUpdated : case_.openedAt ≤ updatedAt) :
+    (transitionSupportCase case_ next h updatedAt hUpdated).id = case_.id := by
+  rfl
+
+/-- A support case tied to a validated account/contact pair. -/
+structure SupportCaseForContact where
+  accountContact : CRMAccountContact
+  case_ : SupportCase
+  case_account_matches : case_.accountId = accountContact.account.id
+  case_contact_matches : case_.contactId = accountContact.contact.id
+
+/-- Validated support cases match the owning account. -/
+theorem supportCaseForContact_account_matches (case_ : SupportCaseForContact) :
+    case_.case_.accountId = case_.accountContact.account.id := by
+  exact case_.case_account_matches
+
+/-- Validated support cases match the owning contact. -/
+theorem supportCaseForContact_contact_matches (case_ : SupportCaseForContact) :
+    case_.case_.contactId = case_.accountContact.contact.id := by
+  exact case_.case_contact_matches
+
 /-- A resolved support case that carries SLA evidence. -/
 structure ResolvedSupportCase where
   case_ : SupportCase
   resolvedAt : Timestamp
   status_resolved : case_.status = SupportCaseStatus.Resolved
   opened_le_resolved : case_.openedAt ≤ resolvedAt
+  lastUpdated_le_resolved : case_.lastUpdatedAt ≤ resolvedAt
   resolved_by_sla : resolvedAt ≤ case_.slaDueAt
 
 /-- Resolved support cases were resolved after they were opened. -/
@@ -440,6 +699,11 @@ theorem resolvedSupportCase_resolved_by_sla (case_ : ResolvedSupportCase) :
     case_.resolvedAt ≤ case_.case_.slaDueAt := by
   exact case_.resolved_by_sla
 
+/-- Resolved support cases are not resolved before their last update timestamp. -/
+theorem resolvedSupportCase_lastUpdated_le_resolved (case_ : ResolvedSupportCase) :
+    case_.case_.lastUpdatedAt ≤ case_.resolvedAt := by
+  exact case_.lastUpdated_le_resolved
+
 /-- Resolved support cases expose the resolved status. -/
 theorem resolvedSupportCase_status_resolved (case_ : ResolvedSupportCase) :
     case_.case_.status = SupportCaseStatus.Resolved := by
@@ -450,7 +714,10 @@ structure RetentionOffer where
   account : CRMAccount
   segment : CustomerSegment
   coupon : Coupon
+  usesBefore : Nat
   discount : Money
+  account_active : crmAccountActive account
+  coupon_applicable : couponCanBeApplied coupon account.lifetimeValue usesBefore
   account_meets_segment_value_floor : segment.minLifetimeValue ≤ account.lifetimeValue
   discount_le_coupon : discount ≤ coupon.amount
   coupon_le_lifetimeValue : coupon.amount ≤ account.lifetimeValue
@@ -475,5 +742,20 @@ theorem retentionOffer_discount_le_segment_value_floor (offer : RetentionOffer) 
 theorem retentionOffer_account_meets_segment_value_floor (offer : RetentionOffer) :
     offer.segment.minLifetimeValue ≤ offer.account.lifetimeValue := by
   exact offer.account_meets_segment_value_floor
+
+/-- Retention offers can only be issued for active CRM accounts. -/
+theorem retentionOffer_account_active (offer : RetentionOffer) :
+    offer.account.status = CRMAccountStatus.Active := by
+  exact offer.account_active
+
+/-- Retention offer coupons meet their minimum subtotal against account lifetime value. -/
+theorem retentionOffer_coupon_minSubtotal_met (offer : RetentionOffer) :
+    offer.coupon.minSubtotal ≤ offer.account.lifetimeValue := by
+  exact offer.coupon_applicable.left
+
+/-- Retention offer coupons stay below their usage limit. -/
+theorem retentionOffer_coupon_usage_below_max (offer : RetentionOffer) :
+    offer.usesBefore < offer.coupon.maxUses := by
+  exact offer.coupon_applicable.right
 
 end CommerceTheory
