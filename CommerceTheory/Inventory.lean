@@ -37,6 +37,11 @@ theorem availableStock_add_reserved_eq_total (s : StockState) :
 def canReserve (s : StockState) (q : Quantity) : Prop :=
   q ≤ availableStock s
 
+instance instDecidableCanReserve (s : StockState) (q : Quantity) :
+    Decidable (canReserve s q) := by
+  unfold canReserve
+  infer_instance
+
 /-- Reserve stock only when the caller supplies proof that the quantity fits. -/
 def reserveStock (s : StockState) (q : Quantity) (h : canReserve s q) : StockState :=
   { sku := s.sku
@@ -280,7 +285,7 @@ theorem confirmReservedShipment_available_eq
     (s : StockState) (q : Quantity) (hReserved : q ≤ s.reserved) :
     availableStock (confirmReservedShipment s q hReserved) = availableStock s := by
   unfold availableStock confirmReservedShipment
-  omega
+  exact Nat.sub_sub_sub_cancel_right hReserved
 
 /-- Compare-and-swap reservation: stale versions or insufficient stock fail. -/
 def compareAndSwapReserve?
@@ -444,7 +449,9 @@ theorem expiredReservation_not_activeAt
     (hExpired : reservationExpiredAt now reservation) :
     ¬ reservationActiveAt now reservation := by
   intro hActive
-  exact (not_lt_of_ge hActive.right) hExpired
+  exact
+    (Timelib.NaiveDateTime.not_lt_of_le now reservation.expiresAt hActive.right)
+      hExpired
 
 /-- Releasing an expired reservation frees its held reserved quantity. -/
 def releaseExpiredReservation
@@ -481,7 +488,7 @@ theorem backorderRequest_conserves_quantity (request : BackorderRequest) :
 theorem backorderRequest_backordered_le_requested (request : BackorderRequest) :
     request.backordered ≤ request.requested := by
   rw [request.requested_eq_available_plus_backordered]
-  omega
+  exact Nat.le_add_left request.backordered request.availableNow
 
 /-- A preorder window with capacity and timestamp ordering. -/
 structure PreorderWindow where
@@ -557,7 +564,9 @@ theorem expiredLot_not_usableAt
     (hExpired : lot.expiresAt < now) :
     ¬ lotUsableAt now lot := by
   intro hUsable
-  exact (not_lt_of_ge hUsable.left) hExpired
+  exact
+    (Timelib.NaiveDateTime.not_lt_of_le now lot.expiresAt hUsable.left)
+      hExpired
 
 /-- SKU substitution rule backed by available substitute stock. -/
 structure SkuSubstitution where
