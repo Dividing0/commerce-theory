@@ -872,6 +872,74 @@ theorem valid_domain_event_step_preserves_safety
       after.ledger.refunded ≤ after.ledger.captured := by
   exact validDomainEventStep_preserves_validity h
 
+/-- Executable semantic domain-event replay is deterministic. -/
+theorem semantic_domain_event_replay_deterministic
+    {state before after : ValidSystemState} {events : List DomainEvent}
+    (hBefore : replayDomainEvents? state events = some before)
+    (hAfter : replayDomainEvents? state events = some after) :
+    before = after := by
+  exact replayDomainEvents?_deterministic hBefore hAfter
+
+/-- Duplicate idempotency keys do not apply a domain event a second time. -/
+theorem duplicate_idempotency_key_noops
+    (key : IdempotencyKey) (event : DomainEvent)
+    (state : ValidSystemState) (idempotency : IdempotencyState)
+    (hProcessed : alreadyProcessed key idempotency) :
+    applyIdempotentDomainEvent? key event state idempotency =
+      some (state, idempotency) := by
+  exact processed_idempotency_key_noops key event state idempotency hProcessed
+
+/-- After a successful keyed event, replaying the same key does not apply it again. -/
+theorem duplicate_idempotency_key_after_success_noops
+    (key : IdempotencyKey) (event : DomainEvent)
+    (state after : ValidSystemState) (idempotency : IdempotencyState)
+    (hFresh : ¬ alreadyProcessed key idempotency)
+    (hApply : applyDomainEvent? state event = some after) :
+    applyIdempotentDomainEvent?
+        key event after (markProcessed key idempotency) =
+      some (after, markProcessed key idempotency) := by
+  exact (duplicate_idempotency_key_does_not_apply_twice
+    key event state after idempotency hFresh hApply).right
+
+/-- Independent stock-reservation and refund projections commute. -/
+theorem stock_reservation_refund_projection_commutes
+    (state : ValidSystemState) (sku : Sku) (quantity : Quantity)
+    (refundAmount : Money)
+    (hSku : state.stock.sku = sku)
+    (hReserve : canReserve state.stock quantity)
+    (hRefund : canRefund state.ledger refundAmount) :
+    let afterReserve := applyStockReservedEvent state sku quantity hSku hReserve
+    let afterRefund := applyRefundIssuedEvent state refundAmount hRefund
+    applyRefundIssuedEvent afterReserve refundAmount hRefund =
+      applyStockReservedEvent afterRefund sku quantity hSku hReserve := by
+  exact stock_reservation_and_refund_commute
+    state sku quantity refundAmount hSku hReserve hRefund
+
+/-- CRM and logistics projections commute because they touch independent counters. -/
+theorem crm_logistics_projection_commutes (state : ValidSystemState) :
+    applyCRMProjectedEvent (applyLogisticsProjectedEvent state) =
+      applyLogisticsProjectedEvent (applyCRMProjectedEvent state) := by
+  exact crm_and_logistics_projection_commute state
+
+/-- Replaying from a snapshot is equivalent to replaying prefix and suffix together. -/
+theorem snapshot_replay_equivalence
+    (state snapshotState : ValidSystemState)
+    (prefix suffix : List DomainEvent) (lastSequence : Nat)
+    (hPrefix : replayDomainEvents? state prefix = some snapshotState) :
+    replayDomainEvents? state (prefix ++ suffix) =
+      replayFromSnapshot?
+        { state := snapshotState, lastSequence := lastSequence } suffix := by
+  exact replay_from_snapshot_equivalent_to_full_replay
+    state snapshotState prefix suffix lastSequence hPrefix
+
+/-- Successful ledger projection equals the payment/refund event folds. -/
+theorem ledger_projection_matches_payment_refund_folds
+    {ledger projected : PaymentLedger} {events : List DomainEvent}
+    (h : projectLedger? ledger events = some projected) :
+    projected.captured = ledgerCapturedFold ledger.captured events ∧
+      projected.refunded = ledgerRefundedFold ledger.refunded events := by
+  exact projectLedger?_matches_payment_refund_folds h
+
 /-- CRM projected events preserve core valid-system safety and increment the CRM counter. -/
 theorem crm_projected_event_safety (state : ValidSystemState) :
     let next := applyCRMProjectedEvent state

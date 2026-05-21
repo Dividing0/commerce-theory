@@ -266,5 +266,275 @@ theorem reserve_and_refund_preserve_validity
   · exact nextStock.reserved_le_total
   · exact nextLedger.refunded_le_captured
 
+/-! ### Semantic replay correctness -/
+
+/-- Recording captured funds increases captured balance while preserving ledger safety. -/
+def recordCapturedPayment (ledger : PaymentLedger) (amount : Money) : PaymentLedger :=
+  { captured := ledger.captured + amount
+    refunded := ledger.refunded
+    refunded_le_captured :=
+      ledger.refunded_le_captured.trans
+        (Nat.le_add_right ledger.captured amount) }
+
+/-- Captured-payment projection records exactly the additional captured amount. -/
+theorem recordCapturedPayment_captured_eq
+    (ledger : PaymentLedger) (amount : Money) :
+    (recordCapturedPayment ledger amount).captured = ledger.captured + amount := by
+  rfl
+
+/-- Captured-payment projection leaves refunded balance unchanged. -/
+theorem recordCapturedPayment_refunded_eq
+    (ledger : PaymentLedger) (amount : Money) :
+    (recordCapturedPayment ledger amount).refunded = ledger.refunded := by
+  rfl
+
+/--
+Executable semantic projection for one domain event. Events outside the core
+stock/payment/CRM/logistics projections leave the simplified system state
+unchanged.
+-/
+def applyDomainEvent? (state : ValidSystemState) : DomainEvent → Option ValidSystemState
+  | DomainEvent.OrderPlaced _ _ => some state
+  | DomainEvent.PaymentCaptured _ amount =>
+      some
+        { stock := state.stock
+          ledger := recordCapturedPayment state.ledger amount
+          crmEventCount := state.crmEventCount
+          logisticsEventCount := state.logisticsEventCount }
+  | DomainEvent.RefundIssued _ amount =>
+      if hRefund : canRefund state.ledger amount then
+        some (applyRefundIssuedEvent state amount hRefund)
+      else
+        none
+  | DomainEvent.StockReserved sku quantity =>
+      if hSku : state.stock.sku = sku then
+        if hReserve : canReserve state.stock quantity then
+          some (applyStockReservedEvent state sku quantity hSku hReserve)
+        else
+          none
+      else
+        none
+  | DomainEvent.OrderShipped _ => some state
+  | DomainEvent.LeadConverted _ _ => some (applyCRMProjectedEvent state)
+  | DomainEvent.SupportCaseOpened _ _ => some (applyCRMProjectedEvent state)
+  | DomainEvent.ShipmentPlanned _ _ => some (applyLogisticsProjectedEvent state)
+  | DomainEvent.ShipmentDelivered _ => some (applyLogisticsProjectedEvent state)
+  | DomainEvent.ReturnApproved _ _ _ => some (applyLogisticsProjectedEvent state)
+
+/-- Executable replay for the semantic domain-event projection. -/
+def replayDomainEvents? :
+    ValidSystemState → List DomainEvent → Option ValidSystemState
+  | state, [] => some state
+  | state, event :: rest =>
+      match applyDomainEvent? state event with
+      | some next => replayDomainEvents? next rest
+      | none => none
+
+/-- One-event semantic projection is deterministic. -/
+theorem applyDomainEvent?_deterministic
+    {state before after : ValidSystemState} {event : DomainEvent}
+    (hBefore : applyDomainEvent? state event = some before)
+    (hAfter : applyDomainEvent? state event = some after) :
+    before = after := by
+  have hSome : (some before : Option ValidSystemState) = some after :=
+    hBefore.symm.trans hAfter
+  cases hSome
+  rfl
+
+/-- Semantic replay is deterministic for a fixed starting state and event list. -/
+theorem replayDomainEvents?_deterministic
+    {state before after : ValidSystemState} {events : List DomainEvent}
+    (hBefore : replayDomainEvents? state events = some before)
+    (hAfter : replayDomainEvents? state events = some after) :
+    before = after := by
+  have hSome : (some before : Option ValidSystemState) = some after :=
+    hBefore.symm.trans hAfter
+  cases hSome
+  rfl
+
+/-- Idempotent event application: already-processed keys do not re-apply events. -/
+def applyIdempotentDomainEvent?
+    (key : IdempotencyKey) (event : DomainEvent)
+    (state : ValidSystemState) (idempotency : IdempotencyState) :
+    Option (ValidSystemState × IdempotencyState) :=
+  if alreadyProcessed key idempotency then
+    some (state, idempotency)
+  else
+    match applyDomainEvent? state event with
+    | some next => some (next, markProcessed key idempotency)
+    | none => none
+
+/-- A duplicate key leaves state and idempotency set unchanged. -/
+theorem processed_idempotency_key_noops
+    (key : IdempotencyKey) (event : DomainEvent)
+    (state : ValidSystemState) (idempotency : IdempotencyState)
+    (hProcessed : alreadyProcessed key idempotency) :
+    applyIdempotentDomainEvent? key event state idempotency =
+      some (state, idempotency) := by
+  simp [applyIdempotentDomainEvent?, hProcessed]
+
+/-- After a successful first application, replaying the same key is a no-op. -/
+theorem duplicate_idempotency_key_does_not_apply_twice
+    (key : IdempotencyKey) (event : DomainEvent)
+    (state after : ValidSystemState) (idempotency : IdempotencyState)
+    (hFresh : ¬ alreadyProcessed key idempotency)
+    (hApply : applyDomainEvent? state event = some after) :
+    applyIdempotentDomainEvent? key event state idempotency =
+        some (after, markProcessed key idempotency) ∧
+      applyIdempotentDomainEvent?
+          key event after (markProcessed key idempotency) =
+        some (after, markProcessed key idempotency) := by
+  constructor
+  · simp [applyIdempotentDomainEvent?, hFresh, hApply]
+  · exact processed_idempotency_key_noops
+      key event after (markProcessed key idempotency)
+      (markProcessed_contains_key key idempotency)
+
+/-- Stock reservation and refund projection commute because they touch disjoint state. -/
+theorem stock_reservation_and_refund_commute
+    (state : ValidSystemState) (sku : Sku) (quantity : Quantity)
+    (refundAmount : Money)
+    (hSku : state.stock.sku = sku)
+    (hReserve : canReserve state.stock quantity)
+    (hRefund : canRefund state.ledger refundAmount) :
+    let afterReserve := applyStockReservedEvent state sku quantity hSku hReserve
+    let afterRefund := applyRefundIssuedEvent state refundAmount hRefund
+    applyRefundIssuedEvent afterReserve refundAmount hRefund =
+      applyStockReservedEvent afterRefund sku quantity hSku hReserve := by
+  rfl
+
+/-- CRM and logistics projections commute because they increment independent counters. -/
+theorem crm_and_logistics_projection_commute (state : ValidSystemState) :
+    applyCRMProjectedEvent (applyLogisticsProjectedEvent state) =
+      applyLogisticsProjectedEvent (applyCRMProjectedEvent state) := by
+  rfl
+
+/-- Snapshot used to resume semantic replay from a previously materialized state. -/
+structure EventSnapshot where
+  state : ValidSystemState
+  lastSequence : Nat
+
+/-- Resume semantic replay from a materialized snapshot. -/
+def replayFromSnapshot? (snapshot : EventSnapshot) (events : List DomainEvent) :
+    Option ValidSystemState :=
+  replayDomainEvents? snapshot.state events
+
+/-- Replaying an appended suffix from a replayed prefix is equivalent to full replay. -/
+theorem replayDomainEvents?_append
+    (state : ValidSystemState) (prefix suffix : List DomainEvent) :
+    replayDomainEvents? state (prefix ++ suffix) =
+      match replayDomainEvents? state prefix with
+      | some snapshot => replayDomainEvents? snapshot suffix
+      | none => none := by
+  induction prefix generalizing state with
+  | nil =>
+      rfl
+  | cons event rest ih =>
+      unfold replayDomainEvents?
+      cases hEvent : applyDomainEvent? state event with
+      | none =>
+          rfl
+      | some next =>
+          exact ih next
+
+/-- Replay from a snapshot is equivalent to replaying prefix then suffix. -/
+theorem replay_from_snapshot_equivalent_to_full_replay
+    (state snapshotState : ValidSystemState)
+    (prefix suffix : List DomainEvent) (lastSequence : Nat)
+    (hPrefix : replayDomainEvents? state prefix = some snapshotState) :
+    replayDomainEvents? state (prefix ++ suffix) =
+      replayFromSnapshot?
+        { state := snapshotState, lastSequence := lastSequence } suffix := by
+  rw [replayDomainEvents?_append, hPrefix]
+  rfl
+
+/-! ### Ledger projection correctness -/
+
+/-- Fold captured balance through payment-captured events. -/
+def ledgerCapturedFold : Money → List DomainEvent → Money
+  | captured, [] => captured
+  | captured, DomainEvent.PaymentCaptured _ amount :: rest =>
+      ledgerCapturedFold (captured + amount) rest
+  | captured, _ :: rest => ledgerCapturedFold captured rest
+
+/-- Fold refunded balance through refund-issued events. -/
+def ledgerRefundedFold : Money → List DomainEvent → Money
+  | refunded, [] => refunded
+  | refunded, DomainEvent.RefundIssued _ amount :: rest =>
+      ledgerRefundedFold (refunded + amount) rest
+  | refunded, _ :: rest => ledgerRefundedFold refunded rest
+
+/-- Project just the payment ledger out of a domain event stream. -/
+def projectLedger? : PaymentLedger → List DomainEvent → Option PaymentLedger
+  | ledger, [] => some ledger
+  | ledger, DomainEvent.PaymentCaptured _ amount :: rest =>
+      projectLedger? (recordCapturedPayment ledger amount) rest
+  | ledger, DomainEvent.RefundIssued _ amount :: rest =>
+      if hRefund : canRefund ledger amount then
+        projectLedger? (issueRefund ledger amount hRefund) rest
+      else
+        none
+  | ledger, _ :: rest => projectLedger? ledger rest
+
+/--
+If ledger projection succeeds, the resulting captured/refunded balances equal
+the explicit folds of payment-captured and refund-issued events.
+-/
+theorem projectLedger?_matches_payment_refund_folds
+    {ledger projected : PaymentLedger} {events : List DomainEvent}
+    (h : projectLedger? ledger events = some projected) :
+    projected.captured = ledgerCapturedFold ledger.captured events ∧
+      projected.refunded = ledgerRefundedFold ledger.refunded events := by
+  induction events generalizing ledger with
+  | nil =>
+      simp [projectLedger?] at h
+      cases h
+      simp [ledgerCapturedFold, ledgerRefundedFold]
+  | cons event rest ih =>
+      cases event with
+      | OrderPlaced orderId amount =>
+          have hFold := ih (ledger := ledger) (by
+            simpa [projectLedger?] using h)
+          simpa [ledgerCapturedFold, ledgerRefundedFold] using hFold
+      | PaymentCaptured orderId amount =>
+          have hFold := ih (ledger := recordCapturedPayment ledger amount) (by
+            simpa [projectLedger?] using h)
+          simpa [ledgerCapturedFold, ledgerRefundedFold, recordCapturedPayment]
+            using hFold
+      | RefundIssued orderId amount =>
+          by_cases hRefund : canRefund ledger amount
+          · have hFold := ih (ledger := issueRefund ledger amount hRefund) (by
+              simpa [projectLedger?, hRefund] using h)
+            simpa [ledgerCapturedFold, ledgerRefundedFold, issueRefund] using hFold
+          · exfalso
+            simpa [projectLedger?, hRefund] using h
+      | StockReserved sku quantity =>
+          have hFold := ih (ledger := ledger) (by
+            simpa [projectLedger?] using h)
+          simpa [ledgerCapturedFold, ledgerRefundedFold] using hFold
+      | OrderShipped orderId =>
+          have hFold := ih (ledger := ledger) (by
+            simpa [projectLedger?] using h)
+          simpa [ledgerCapturedFold, ledgerRefundedFold] using hFold
+      | LeadConverted leadId opportunityId =>
+          have hFold := ih (ledger := ledger) (by
+            simpa [projectLedger?] using h)
+          simpa [ledgerCapturedFold, ledgerRefundedFold] using hFold
+      | SupportCaseOpened caseId orderId =>
+          have hFold := ih (ledger := ledger) (by
+            simpa [projectLedger?] using h)
+          simpa [ledgerCapturedFold, ledgerRefundedFold] using hFold
+      | ShipmentPlanned shipmentId orderId =>
+          have hFold := ih (ledger := ledger) (by
+            simpa [projectLedger?] using h)
+          simpa [ledgerCapturedFold, ledgerRefundedFold] using hFold
+      | ShipmentDelivered shipmentId =>
+          have hFold := ih (ledger := ledger) (by
+            simpa [projectLedger?] using h)
+          simpa [ledgerCapturedFold, ledgerRefundedFold] using hFold
+      | ReturnApproved authorizationId orderId amount =>
+          have hFold := ih (ledger := ledger) (by
+            simpa [projectLedger?] using h)
+          simpa [ledgerCapturedFold, ledgerRefundedFold] using hFold
 
 end CommerceTheory
