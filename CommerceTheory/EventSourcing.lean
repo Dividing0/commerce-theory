@@ -16,6 +16,9 @@ inductive DomainEvent where
   | PaymentCaptured : OrderId → Money → DomainEvent
   | RefundIssued : OrderId → Money → DomainEvent
   | StockReserved : Sku → Quantity → DomainEvent
+  | ReservationReleased : Sku → Quantity → DomainEvent
+  | ReservedShipmentConfirmed : Sku → Quantity → DomainEvent
+  | TaxLiabilityRecorded : Id → Money → DomainEvent
   | OrderShipped : OrderId → DomainEvent
   | LeadConverted : LeadId → OpportunityId → DomainEvent
   | SupportCaseOpened : SupportCaseId → Option OrderId → DomainEvent
@@ -152,6 +155,7 @@ theorem alreadyProcessed_markProcessed_iff
 structure ValidSystemState where
   stock : StockState
   ledger : PaymentLedger
+  taxLiability : Money
   crmEventCount : Nat
   logisticsEventCount : Nat
 
@@ -164,6 +168,7 @@ def applyStockReservedEvent
     ValidSystemState :=
   { stock := reserveStock state.stock quantity hReserve
     ledger := state.ledger
+    taxLiability := state.taxLiability
     crmEventCount := state.crmEventCount
     logisticsEventCount := state.logisticsEventCount }
 
@@ -187,6 +192,7 @@ def applyRefundIssuedEvent
     ValidSystemState :=
   { stock := state.stock
     ledger := issueRefund state.ledger amount hRefund
+    taxLiability := state.taxLiability
     crmEventCount := state.crmEventCount
     logisticsEventCount := state.logisticsEventCount }
 
@@ -201,10 +207,87 @@ theorem applyRefundIssuedEvent_preserves_validity
   simp [applyRefundIssuedEvent, issueRefund_preserves_safety]
   exact state.stock.reserved_le_total
 
+/-- Release reserved stock from the validated global state. -/
+def applyReservationReleasedEvent
+    (state : ValidSystemState)
+    (sku : Sku) (quantity : Quantity)
+    (_hSku : state.stock.sku = sku)
+    (hReserved : quantity ≤ state.stock.reserved) :
+    ValidSystemState :=
+  { stock := releaseReservedStock state.stock quantity hReserved
+    ledger := state.ledger
+    taxLiability := state.taxLiability
+    crmEventCount := state.crmEventCount
+    logisticsEventCount := state.logisticsEventCount }
+
+/-- Releasing reserved stock preserves stock and ledger validity. -/
+theorem applyReservationReleasedEvent_preserves_validity
+    (state : ValidSystemState)
+    (sku : Sku) (quantity : Quantity)
+    (hSku : state.stock.sku = sku)
+    (hReserved : quantity ≤ state.stock.reserved) :
+    let next := applyReservationReleasedEvent state sku quantity hSku hReserved
+    next.stock.reserved ≤ next.stock.total ∧
+      next.ledger.refunded ≤ next.ledger.captured := by
+  simp [applyReservationReleasedEvent, releaseReservedStock_preserves_safety]
+  exact state.ledger.refunded_le_captured
+
+/-- Confirm shipment for stock that was already reserved. -/
+def applyReservedShipmentConfirmedEvent
+    (state : ValidSystemState)
+    (sku : Sku) (quantity : Quantity)
+    (_hSku : state.stock.sku = sku)
+    (hReserved : quantity ≤ state.stock.reserved) :
+    ValidSystemState :=
+  { stock := confirmReservedShipment state.stock quantity hReserved
+    ledger := state.ledger
+    taxLiability := state.taxLiability
+    crmEventCount := state.crmEventCount
+    logisticsEventCount := state.logisticsEventCount }
+
+/-- Confirming reserved shipment preserves stock and ledger validity. -/
+theorem applyReservedShipmentConfirmedEvent_preserves_validity
+    (state : ValidSystemState)
+    (sku : Sku) (quantity : Quantity)
+    (hSku : state.stock.sku = sku)
+    (hReserved : quantity ≤ state.stock.reserved) :
+    let next := applyReservedShipmentConfirmedEvent state sku quantity hSku hReserved
+    next.stock.reserved ≤ next.stock.total ∧
+      next.ledger.refunded ≤ next.ledger.captured := by
+  simp [applyReservedShipmentConfirmedEvent,
+    confirmReservedShipment_preserves_safety]
+  exact state.ledger.refunded_le_captured
+
+/-- Recording seller-side tax liability in the replay state. -/
+def applyTaxLiabilityRecordedEvent
+    (state : ValidSystemState) (amount : Money) : ValidSystemState :=
+  { stock := state.stock
+    ledger := state.ledger
+    taxLiability := state.taxLiability + amount
+    crmEventCount := state.crmEventCount
+    logisticsEventCount := state.logisticsEventCount }
+
+/-- Tax-liability projection preserves stock and ledger validity. -/
+theorem applyTaxLiabilityRecordedEvent_preserves_validity
+    (state : ValidSystemState) (amount : Money) :
+    let next := applyTaxLiabilityRecordedEvent state amount
+    next.stock.reserved ≤ next.stock.total ∧
+      next.ledger.refunded ≤ next.ledger.captured := by
+  simp [applyTaxLiabilityRecordedEvent]
+  exact ⟨state.stock.reserved_le_total, state.ledger.refunded_le_captured⟩
+
+/-- Tax-liability events add exactly the declared seller-side tax amount. -/
+theorem applyTaxLiabilityRecordedEvent_taxLiability_eq
+    (state : ValidSystemState) (amount : Money) :
+    (applyTaxLiabilityRecordedEvent state amount).taxLiability =
+      state.taxLiability + amount := by
+  rfl
+
 /-- Apply a CRM-domain event projection while preserving stock and payment safety. -/
 def applyCRMProjectedEvent (state : ValidSystemState) : ValidSystemState :=
   { stock := state.stock
     ledger := state.ledger
+    taxLiability := state.taxLiability
     crmEventCount := state.crmEventCount + 1
     logisticsEventCount := state.logisticsEventCount }
 
@@ -226,6 +309,7 @@ theorem applyCRMProjectedEvent_increments_count (state : ValidSystemState) :
 def applyLogisticsProjectedEvent (state : ValidSystemState) : ValidSystemState :=
   { stock := state.stock
     ledger := state.ledger
+    taxLiability := state.taxLiability
     crmEventCount := state.crmEventCount
     logisticsEventCount := state.logisticsEventCount + 1 }
 
@@ -260,6 +344,7 @@ theorem reserve_and_refund_preserve_validity
   refine ⟨{
     stock := nextStock
     ledger := nextLedger
+    taxLiability := state.taxLiability
     crmEventCount := state.crmEventCount
     logisticsEventCount := state.logisticsEventCount }, ?_⟩
   constructor
@@ -289,9 +374,9 @@ theorem recordCapturedPayment_refunded_eq
   rfl
 
 /--
-Executable semantic projection for one domain event. Events outside the core
-stock/payment/CRM/logistics projections leave the simplified system state
-unchanged.
+Executable semantic projection for one domain event. The replay state now covers
+stock, payment ledger, seller-side tax liability, CRM, and logistics counters;
+order lifecycle events that do not affect those projections remain no-ops.
 -/
 def applyDomainEvent? (state : ValidSystemState) : DomainEvent → Option ValidSystemState
   | DomainEvent.OrderPlaced _ _ => some state
@@ -299,6 +384,7 @@ def applyDomainEvent? (state : ValidSystemState) : DomainEvent → Option ValidS
       some
         { stock := state.stock
           ledger := recordCapturedPayment state.ledger amount
+          taxLiability := state.taxLiability
           crmEventCount := state.crmEventCount
           logisticsEventCount := state.logisticsEventCount }
   | DomainEvent.RefundIssued _ amount =>
@@ -314,6 +400,26 @@ def applyDomainEvent? (state : ValidSystemState) : DomainEvent → Option ValidS
           none
       else
         none
+  | DomainEvent.ReservationReleased sku quantity =>
+      if hSku : state.stock.sku = sku then
+        if hReserved : quantity ≤ state.stock.reserved then
+          some (applyReservationReleasedEvent state sku quantity hSku hReserved)
+        else
+          none
+      else
+        none
+  | DomainEvent.ReservedShipmentConfirmed sku quantity =>
+      if hSku : state.stock.sku = sku then
+        if hReserved : quantity ≤ state.stock.reserved then
+          some
+            (applyReservedShipmentConfirmedEvent
+              state sku quantity hSku hReserved)
+        else
+          none
+      else
+        none
+  | DomainEvent.TaxLiabilityRecorded _ amount =>
+      some (applyTaxLiabilityRecordedEvent state amount)
   | DomainEvent.OrderShipped _ => some state
   | DomainEvent.LeadConverted _ _ => some (applyCRMProjectedEvent state)
   | DomainEvent.SupportCaseOpened _ _ => some (applyCRMProjectedEvent state)
@@ -464,6 +570,25 @@ def ledgerRefundedFold : Money → List DomainEvent → Money
       ledgerRefundedFold (refunded + amount) rest
   | refunded, _ :: rest => ledgerRefundedFold refunded rest
 
+/-- Fold seller-side tax liability through tax-liability events. -/
+def taxLiabilityFold : Money → List DomainEvent → Money
+  | liability, [] => liability
+  | liability, DomainEvent.TaxLiabilityRecorded _ amount :: rest =>
+      taxLiabilityFold (liability + amount) rest
+  | liability, _ :: rest => taxLiabilityFold liability rest
+
+/-- Project seller-side tax liability out of a domain event stream. -/
+def projectTaxLiability (openingLiability : Money) (events : List DomainEvent) :
+    Money :=
+  taxLiabilityFold openingLiability events
+
+/-- Tax-liability projection is exactly the fold over tax-liability events. -/
+theorem projectTaxLiability_matches_fold
+    (openingLiability : Money) (events : List DomainEvent) :
+    projectTaxLiability openingLiability events =
+      taxLiabilityFold openingLiability events := by
+  rfl
+
 /-- Project just the payment ledger out of a domain event stream. -/
 def projectLedger? : PaymentLedger → List DomainEvent → Option PaymentLedger
   | ledger, [] => some ledger
@@ -509,6 +634,18 @@ theorem projectLedger?_matches_payment_refund_folds
           · exfalso
             simpa [projectLedger?, hRefund] using h
       | StockReserved sku quantity =>
+          have hFold := ih (ledger := ledger) (by
+            simpa [projectLedger?] using h)
+          simpa [ledgerCapturedFold, ledgerRefundedFold] using hFold
+      | ReservationReleased sku quantity =>
+          have hFold := ih (ledger := ledger) (by
+            simpa [projectLedger?] using h)
+          simpa [ledgerCapturedFold, ledgerRefundedFold] using hFold
+      | ReservedShipmentConfirmed sku quantity =>
+          have hFold := ih (ledger := ledger) (by
+            simpa [projectLedger?] using h)
+          simpa [ledgerCapturedFold, ledgerRefundedFold] using hFold
+      | TaxLiabilityRecorded id amount =>
           have hFold := ih (ledger := ledger) (by
             simpa [projectLedger?] using h)
           simpa [ledgerCapturedFold, ledgerRefundedFold] using hFold

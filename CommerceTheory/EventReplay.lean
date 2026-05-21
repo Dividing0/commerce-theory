@@ -90,6 +90,22 @@ inductive ValidSystemEventStep : ValidSystemState → ValidSystemState → Prop 
       (hRefund : canRefund state.ledger amount) :
       ValidSystemEventStep state
         (applyRefundIssuedEvent state amount hRefund)
+  | reservationReleased
+      (state : ValidSystemState) (sku : Sku) (quantity : Quantity)
+      (hSku : state.stock.sku = sku)
+      (hReserved : quantity ≤ state.stock.reserved) :
+      ValidSystemEventStep state
+        (applyReservationReleasedEvent state sku quantity hSku hReserved)
+  | reservedShipmentConfirmed
+      (state : ValidSystemState) (sku : Sku) (quantity : Quantity)
+      (hSku : state.stock.sku = sku)
+      (hReserved : quantity ≤ state.stock.reserved) :
+      ValidSystemEventStep state
+        (applyReservedShipmentConfirmedEvent state sku quantity hSku hReserved)
+  | taxLiabilityRecorded
+      (state : ValidSystemState) (amount : Money) :
+      ValidSystemEventStep state
+        (applyTaxLiabilityRecordedEvent state amount)
   | crmProjected
       (state : ValidSystemState) :
       ValidSystemEventStep state
@@ -118,6 +134,14 @@ theorem validSystemEventStep_preserves_validity
       exact applyStockReservedEvent_preserves_validity before sku quantity hSku hReserve
   | refundIssued amount hRefund =>
       exact applyRefundIssuedEvent_preserves_validity before amount hRefund
+  | reservationReleased sku quantity hSku hReserved =>
+      exact applyReservationReleasedEvent_preserves_validity
+        before sku quantity hSku hReserved
+  | reservedShipmentConfirmed sku quantity hSku hReserved =>
+      exact applyReservedShipmentConfirmedEvent_preserves_validity
+        before sku quantity hSku hReserved
+  | taxLiabilityRecorded amount =>
+      exact applyTaxLiabilityRecordedEvent_preserves_validity before amount
   | crmProjected =>
       exact applyCRMProjectedEvent_preserves_validity before
   | logisticsProjected =>
@@ -137,6 +161,23 @@ inductive ValidDomainEventStep :
       (hRefund : canRefund state.ledger amount) :
       ValidDomainEventStep (DomainEvent.RefundIssued orderId amount) state
         (applyRefundIssuedEvent state amount hRefund)
+  | reservationReleased
+      (state : ValidSystemState) (sku : Sku) (quantity : Quantity)
+      (hSku : state.stock.sku = sku)
+      (hReserved : quantity ≤ state.stock.reserved) :
+      ValidDomainEventStep (DomainEvent.ReservationReleased sku quantity) state
+        (applyReservationReleasedEvent state sku quantity hSku hReserved)
+  | reservedShipmentConfirmed
+      (state : ValidSystemState) (sku : Sku) (quantity : Quantity)
+      (hSku : state.stock.sku = sku)
+      (hReserved : quantity ≤ state.stock.reserved) :
+      ValidDomainEventStep
+        (DomainEvent.ReservedShipmentConfirmed sku quantity) state
+        (applyReservedShipmentConfirmedEvent state sku quantity hSku hReserved)
+  | taxLiabilityRecorded
+      (state : ValidSystemState) (id : Id) (amount : Money) :
+      ValidDomainEventStep (DomainEvent.TaxLiabilityRecorded id amount) state
+        (applyTaxLiabilityRecordedEvent state amount)
   | crmProjected
       (event : DomainEvent) (state : ValidSystemState)
       (hCRM : domainEventIsCRM event) :
@@ -157,6 +198,14 @@ theorem validDomainEventStep_preserves_validity
       exact applyStockReservedEvent_preserves_validity before sku quantity hSku hReserve
   | refundIssued orderId amount hRefund =>
       exact applyRefundIssuedEvent_preserves_validity before amount hRefund
+  | reservationReleased sku quantity hSku hReserved =>
+      exact applyReservationReleasedEvent_preserves_validity
+        before sku quantity hSku hReserved
+  | reservedShipmentConfirmed sku quantity hSku hReserved =>
+      exact applyReservedShipmentConfirmedEvent_preserves_validity
+        before sku quantity hSku hReserved
+  | taxLiabilityRecorded id amount =>
+      exact applyTaxLiabilityRecordedEvent_preserves_validity before amount
   | crmProjected hCRM =>
       exact applyCRMProjectedEvent_preserves_validity before
   | logisticsProjected hLogistics =>

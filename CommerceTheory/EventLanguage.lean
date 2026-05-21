@@ -37,6 +37,9 @@ def domainEventSymbol : DomainEvent → OrderEventSymbol
   | DomainEvent.PaymentCaptured _ _ => OrderEventSymbol.PaymentCaptured
   | DomainEvent.RefundIssued _ _ => OrderEventSymbol.RefundIssued
   | DomainEvent.StockReserved _ _ => OrderEventSymbol.StockReserved
+  | DomainEvent.ReservationReleased _ _ => OrderEventSymbol.Other
+  | DomainEvent.ReservedShipmentConfirmed _ _ => OrderEventSymbol.Other
+  | DomainEvent.TaxLiabilityRecorded _ _ => OrderEventSymbol.Other
   | DomainEvent.OrderShipped _ => OrderEventSymbol.OrderShipped
   | DomainEvent.LeadConverted _ _ => OrderEventSymbol.Other
   | DomainEvent.SupportCaseOpened _ _ => OrderEventSymbol.Other

@@ -14,7 +14,7 @@ opportunity selection, CRM, and logistics.
 - Dependencies:
   - `leanprover-community/mathlib`, pinned to `v4.29.1`
   - `leanprover/cslib`, pinned to `v4.29.0`
-  - `ammkrn/timelib`, pinned in `lake-manifest.json` to
+  - `ammkrn/timelib`, pinned in `lakefile.toml` and `lake-manifest.json` to
     `2c69e4a597a99d1ce748dea67af430db20ca0ea8`
 
 ## Project Layout
@@ -25,7 +25,9 @@ opportunity selection, CRM, and logistics.
 - `CommerceTheory/Catalog.lean`: products, variants, catalog entries, listing
   content, and marketplace content policy validation.
 - `CommerceTheory/Inventory.lean`: stock, reservations, optimistic locking,
-  warehouse picking, packing, shipping, and allocation plans.
+  reservation expiry, backorders, preorders, serialized units, lots, SKU
+  substitution, split fulfillment, warehouse picking, packing, shipping, and
+  allocation plans.
 - `CommerceTheory/Pricing.lean`: cart lines, totals, coupons, shipping charges,
   and order-total bounds.
 - `CommerceTheory/Orders.lean`: order states, payment states, typestate helpers,
@@ -48,11 +50,14 @@ opportunity selection, CRM, and logistics.
   stacking, search results, and recommendation safety.
 - `CommerceTheory/FulfillmentFinance.lean`: FX, tax, rounding-mode evidence,
   shipping zones, carrier quotes, package limits, and reconciliation tolerance.
+- `CommerceTheory/Tax.lean`: tax-inclusive and tax-exclusive pricing, invoice
+  lines, invoice totals, exemptions, marketplace-facilitator tax, and
+  order/invoice liability links.
 - `CommerceTheory/RiskPrivacy.lean`: fraud limits, roles, CRM/logistics actions,
   order and entity audit events, consent purposes, and processing bases.
-- `CommerceTheory/EventSourcing.lean`: order, CRM, and logistics domain events,
-  envelopes, streams, webhooks, idempotency, projected event counters, and
-  state-validity preservation.
+- `CommerceTheory/EventSourcing.lean`: order, inventory, tax, CRM, and
+  logistics domain events, envelopes, streams, webhooks, idempotency, projected
+  event counters, seller tax-liability folds, and state-validity preservation.
 - `CommerceTheory/EventLanguage.lean`: CSLib deterministic automaton and regular
   language for coarse order-event sequence validation.
 - `CommerceTheory/EventReplay.lean`: CSLib bounded step relations for webhook
@@ -75,6 +80,10 @@ opportunity selection, CRM, and logistics.
   plans, destination zone matching, carrier handoff, tracking histories with
   carrier/tracking identity, delivery scans, warehouse transfers, and SKU-aware
   order-bound returns.
+- `CommerceTheory/Validation.lean`: executable constructors and validator
+  soundness theorems for catalog, inventory, pricing, orders, accounting,
+  marketplace, tax, risk/privacy, events, post-purchase, CRM, forecasting, and
+  logistics flows.
 - `CommerceTheory/InventoryAlgorithms.lean`: CSLib `TimeM` inventory allocation
   algorithms with explicit operation counts.
 - `CommerceTheory/KeyedTotals.lean`: CSLib finite-support keyed allocation totals.
@@ -147,7 +156,11 @@ validated structures. Theorems then expose the reusable guarantees, such as:
 - refunds never exceed captured payments;
 - marketplace fees and payouts expose their rounding mode, with floor-rounding
   residuals bounded by one minor unit per line/item;
+- tax-inclusive prices, tax-exclusive prices, tax invoice lines, and invoice
+  totals expose their tax-accounting equalities and rounding bounds;
 - marketplace payouts never exceed gross marketplace revenue;
+- marketplace-facilitator and B2B exemption validators preserve their tax
+  liability/exemption evidence;
 - dropship offers preserve their stated minimum profit;
 - signed profit/loss records real losses instead of hiding them behind
   floor-subtracted non-negative profit;
@@ -167,7 +180,8 @@ computer-science structure:
   equivalence.
 - Event replay benefits from CSLib's step-counted relations.
   `CommerceTheory.EventReplay` expresses webhook replay and valid system-state
-  replay as exact/within-step relations.
+  replay as exact/within-step relations, including inventory release,
+  shipment-confirmation, and tax-liability events.
 - Event sequence validation can use CSLib automata and regular languages.
   `CommerceTheory.EventLanguage` models a coarse deterministic validator for
   order event words and proves the accepted language is regular.

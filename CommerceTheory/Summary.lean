@@ -210,6 +210,78 @@ theorem executable_refund_validation_safety
     refund.amount ≤ remainingRefundAmount refund.ledger := by
   exact validateRefund_sound h
 
+/-- Successful executable CAS reservation validation advances and preserves stock. -/
+theorem executable_cas_reservation_validation_safety
+    {stock next : VersionedStock} {quantity expectedVersion : Nat}
+    (h :
+      validateCompareAndSwapReservation stock quantity expectedVersion =
+        Except.ok next) :
+    next.version = stock.version + 1 ∧ next.reserved ≤ next.total := by
+  exact validateCompareAndSwapReservation_sound h
+
+/-- Successful executable timed-reservation validation proves time and stock bounds. -/
+theorem executable_timed_reservation_validation_safety
+    {stock : StockState} {quantity : Quantity}
+    {reservedAt expiresAt : Timestamp} {status : ReservationStatus}
+    {reservation : TimedReservation}
+    (h :
+      validateTimedReservation stock quantity reservedAt expiresAt status =
+        Except.ok reservation) :
+    reservation.reservedAt ≤ reservation.expiresAt ∧
+      reservation.quantity ≤ reservation.stock.reserved := by
+  exact validateTimedReservation_sound h
+
+/-- Successful executable preorder-window validation proves ordered bounds. -/
+theorem executable_preorder_window_validation_safety
+    {window : PreorderWindow}
+    (h :
+      validatePreorderWindow window.sku window.opensAt window.closesAt
+        window.capacity = Except.ok window) :
+    window.opensAt ≤ window.closesAt := by
+  exact validatePreorderWindow_sound h
+
+/-- Successful executable split-fulfillment validation keeps stock and warehouse safety. -/
+theorem executable_split_fulfillment_validation_safety
+    {plan : SplitFulfillmentPlan}
+    (h :
+      validateSplitFulfillmentPlan plan.plan plan.firstWarehouse
+        plan.secondWarehouse = Except.ok plan) :
+    plan.plan.requested ≤ allocationsAvailableTotal plan.plan.allocations ∧
+      allocationKeysDistinct plan.plan.allocations ∧
+      plan.firstWarehouse.id ≠ plan.secondWarehouse.id := by
+  exact validateSplitFulfillmentPlan_sound h
+
+/-- Successful executable tax-invoice validation proves line and component totals. -/
+theorem executable_tax_invoice_validation_safety
+    {raw : RawTaxInvoice} {invoice : TaxInvoice}
+    (h : validateTaxInvoice raw = Except.ok invoice) :
+    invoice.subtotal = invoiceLineSubtotalTotal invoice.lines ∧
+      invoice.tax = invoiceLineTaxTotal invoice.lines ∧
+      invoice.total + invoice.discount =
+        invoice.subtotal + invoice.tax + invoice.shipping := by
+  exact validateTaxInvoice_sound h
+
+/-- Successful executable B2B tax-exemption validation proves certificate safety. -/
+theorem executable_b2b_tax_exemption_validation_safety
+    {exemption : B2BTaxExemption}
+    (h :
+      validateB2BTaxExemption exemption.customer exemption.jurisdiction
+        exemption.certificate exemption.checkedAt = Except.ok exemption) :
+    exemption.certificate.customerId = exemption.customer.id ∧
+      exemption.certificate.jurisdictionId = exemption.jurisdiction.id ∧
+      exemption.customer.wholesaleApproved = true ∧
+      exemption.checkedAt ≤ exemption.certificate.validUntil := by
+  exact validateB2BTaxExemption_sound h
+
+/-- Successful executable order/tax-invoice link validation proves tax and currency match. -/
+theorem executable_order_tax_invoice_link_validation_safety
+    {link : OrderTaxInvoiceLink}
+    (h :
+      validateOrderTaxInvoiceLink link.order link.invoice = Except.ok link) :
+    link.order.tax = link.invoice.tax ∧
+      link.invoice.currency = link.order.currency := by
+  exact validateOrderTaxInvoiceLink_sound h
+
 /-! ### Compositional end-to-end flow theorems -/
 
 /--
@@ -806,6 +878,21 @@ theorem tax_invoice_line_rounding_and_total_safety
   exact ⟨line.tax_correct, taxInvoiceLine_total_conserves_components line,
     invoiceLine_floor_tax_rounding_error_lt_one_minor_unit line⟩
 
+/-- Order tax, invoice tax, invoice currency, and accounting tax liability compose. -/
+theorem order_tax_invoice_accounting_liability_safety
+    (link : OrderTaxInvoiceLink) (accounts : AdvancedAccountingAccounts) :
+    link.order.tax = link.invoice.tax ∧
+      link.invoice.currency = link.order.currency ∧
+      link.invoice.tax ≤
+        creditTotal
+          (invoiceAccrualJournal accounts link.invoice.subtotal link.invoice.tax
+            (link.invoice.subtotal + link.invoice.tax) rfl).postings := by
+  exact ⟨orderTaxInvoiceLink_tax_matches link,
+    orderTaxInvoiceLink_currency_matches link,
+    invoiceAccrualJournal_tax_le_creditTotal accounts
+      link.invoice.subtotal link.invoice.tax
+      (link.invoice.subtotal + link.invoice.tax) rfl⟩
+
 /-- Bounded coupon applications conserve subtotal after applying the discount amount. -/
 theorem bounded_coupon_application_conservation
     (application : BoundedCouponApplication) :
@@ -1326,6 +1413,46 @@ theorem valid_domain_event_step_preserves_safety
       after.ledger.refunded ≤ after.ledger.captured := by
   exact validDomainEventStep_preserves_validity h
 
+/-- Reservation-release domain events preserve stock and ledger safety. -/
+theorem reservation_release_domain_event_safety
+    (state : ValidSystemState) (sku : Sku) (quantity : Quantity)
+    (hSku : state.stock.sku = sku)
+    (hReserved : quantity ≤ state.stock.reserved) :
+    let next := applyReservationReleasedEvent state sku quantity hSku hReserved
+    next.stock.reserved ≤ next.stock.total ∧
+      next.ledger.refunded ≤ next.ledger.captured := by
+  exact applyReservationReleasedEvent_preserves_validity
+    state sku quantity hSku hReserved
+
+/-- Reserved-shipment confirmation preserves safety and does not decrement availability twice. -/
+theorem reserved_shipment_confirmation_domain_event_safety
+    (state : ValidSystemState) (sku : Sku) (quantity : Quantity)
+    (hSku : state.stock.sku = sku)
+    (hReserved : quantity ≤ state.stock.reserved) :
+    let next :=
+      applyReservedShipmentConfirmedEvent state sku quantity hSku hReserved
+    next.stock.reserved ≤ next.stock.total ∧
+      next.ledger.refunded ≤ next.ledger.captured ∧
+      availableStock next.stock = availableStock state.stock := by
+  simp [applyReservedShipmentConfirmedEvent]
+  exact ⟨confirmReservedShipment_preserves_safety
+      state.stock quantity hReserved,
+    state.ledger.refunded_le_captured,
+    confirmReservedShipment_available_eq state.stock quantity hReserved⟩
+
+/-- Tax-liability domain events update seller-side liability and preserve core safety. -/
+theorem tax_liability_domain_event_safety
+    (state : ValidSystemState) (amount : Money) :
+    (applyTaxLiabilityRecordedEvent state amount).taxLiability =
+        state.taxLiability + amount ∧
+      (applyTaxLiabilityRecordedEvent state amount).stock.reserved ≤
+        (applyTaxLiabilityRecordedEvent state amount).stock.total ∧
+      (applyTaxLiabilityRecordedEvent state amount).ledger.refunded ≤
+        (applyTaxLiabilityRecordedEvent state amount).ledger.captured := by
+  exact ⟨applyTaxLiabilityRecordedEvent_taxLiability_eq state amount,
+    (applyTaxLiabilityRecordedEvent_preserves_validity state amount).left,
+    (applyTaxLiabilityRecordedEvent_preserves_validity state amount).right⟩
+
 /-- Executable semantic domain-event replay is deterministic. -/
 theorem semantic_domain_event_replay_deterministic
     {state before after : ValidSystemState} {events : List DomainEvent}
@@ -1393,6 +1520,13 @@ theorem ledger_projection_matches_payment_refund_folds
     projected.captured = ledgerCapturedFold ledger.captured events ∧
       projected.refunded = ledgerRefundedFold ledger.refunded events := by
   exact projectLedger?_matches_payment_refund_folds h
+
+/-- Tax-liability projection equals the fold over tax-liability events. -/
+theorem tax_liability_projection_matches_fold
+    (openingLiability : Money) (events : List DomainEvent) :
+    projectTaxLiability openingLiability events =
+      taxLiabilityFold openingLiability events := by
+  exact projectTaxLiability_matches_fold openingLiability events
 
 /-- CRM projected events preserve core valid-system safety and increment the CRM counter. -/
 theorem crm_projected_event_safety (state : ValidSystemState) :

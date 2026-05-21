@@ -4,6 +4,7 @@ import CommerceTheory.ImplicitInvariants
 import CommerceTheory.InventoryAlgorithms
 import CommerceTheory.KeyedTotals
 import CommerceTheory.OpportunityRanking
+import CommerceTheory.Tax
 import CommerceTheory.Workflow
 
 namespace CommerceTheory
@@ -49,6 +50,7 @@ inductive ValidationError where
   | crmInvariantFailed
   | logisticsInvariantFailed
   | implicitInvariantFailed
+  | taxInvariantFailed
 deriving DecidableEq, Repr
 
 /-- Raw cart line data before the discount bound has been checked. -/
@@ -462,6 +464,319 @@ theorem validateDistinctFulfillmentPlan_sound
       allocationKeysDistinct plan.allocations := by
   exact ⟨distinctFulfillmentPlan_requested_le_availableTotal plan,
     plan.allocation_keys_distinct⟩
+
+/-! ### Inventory concurrency validators -/
+
+/-- Raw reservation attempt before stock, version, and CAS checks. -/
+structure RawReservationAttempt where
+  stock : RawStockState
+  version : Nat
+  quantity : Quantity
+  expectedVersion : Nat
+
+/-- Validate a raw reservation attempt into versioned stock plus observed version. -/
+def validateRawReservationAttempt (raw : RawReservationAttempt) :
+    Except ValidationError ReservationAttempt := do
+  let stock ← validateVersionedStock raw.stock raw.version
+  Except.ok
+    { stock := stock
+      quantity := raw.quantity
+      expectedVersion := raw.expectedVersion }
+
+/-- Successful raw reservation-attempt validation carries safe versioned stock. -/
+theorem validateRawReservationAttempt_sound
+    {raw : RawReservationAttempt} {attempt : ReservationAttempt}
+    (_h : validateRawReservationAttempt raw = Except.ok attempt) :
+    attempt.stock.reserved ≤ attempt.stock.total := by
+  exact attempt.stock.reserved_le_total
+
+/-- Validate a compare-and-swap reservation and return the next versioned state. -/
+def validateCompareAndSwapReservation
+    (stock : VersionedStock) (quantity expectedVersion : Nat) :
+    Except ValidationError VersionedStock :=
+  match compareAndSwapReserve? stock quantity expectedVersion with
+  | some next => Except.ok next
+  | none => Except.error ValidationError.inventoryInvariantFailed
+
+/-- Successful CAS validation advances the version and preserves stock safety. -/
+theorem validateCompareAndSwapReservation_sound
+    {stock next : VersionedStock} {quantity expectedVersion : Nat}
+    (h : validateCompareAndSwapReservation stock quantity expectedVersion =
+      Except.ok next) :
+    next.version = stock.version + 1 ∧ next.reserved ≤ next.total := by
+  cases hCas : compareAndSwapReserve? stock quantity expectedVersion with
+  | none =>
+      simp [validateCompareAndSwapReservation, hCas] at h
+  | some result =>
+      simp [validateCompareAndSwapReservation, hCas] at h
+      cases h
+      exact ⟨compareAndSwapReserve?_success_increases_version
+          stock quantity expectedVersion result hCas,
+        compareAndSwapReserve?_success_preserves_safety
+          stock quantity expectedVersion result hCas⟩
+
+/-- Validate a raw reservation attempt and execute it with CAS semantics. -/
+def validateRawCompareAndSwapReservation (raw : RawReservationAttempt) :
+    Except ValidationError VersionedStock := do
+  let attempt ← validateRawReservationAttempt raw
+  validateCompareAndSwapReservation
+    attempt.stock attempt.quantity attempt.expectedVersion
+
+/-- Validate release of reserved stock. -/
+def validateReleaseReservedStock (stock : StockState) (quantity : Quantity) :
+    Except ValidationError StockState :=
+  if hReserved : quantity ≤ stock.reserved then
+    Except.ok (releaseReservedStock stock quantity hReserved)
+  else
+    Except.error ValidationError.inventoryInvariantFailed
+
+/-- Successful release validation preserves stock safety. -/
+theorem validateReleaseReservedStock_sound
+    {stock released : StockState} {quantity : Quantity}
+    (_h : validateReleaseReservedStock stock quantity = Except.ok released) :
+    released.reserved ≤ released.total := by
+  exact released.reserved_le_total
+
+/-- Validate shipment confirmation from already-reserved stock. -/
+def validateConfirmReservedShipment (stock : StockState) (quantity : Quantity) :
+    Except ValidationError StockState :=
+  if hReserved : quantity ≤ stock.reserved then
+    Except.ok (confirmReservedShipment stock quantity hReserved)
+  else
+    Except.error ValidationError.inventoryInvariantFailed
+
+/-- Successful reserved-shipment confirmation preserves safety. -/
+theorem validateConfirmReservedShipment_sound
+    {stock confirmed : StockState} {quantity : Quantity}
+    (_h : validateConfirmReservedShipment stock quantity = Except.ok confirmed) :
+    confirmed.reserved ≤ confirmed.total := by
+  exact confirmed.reserved_le_total
+
+/-- Validate timed reservation expiry and reserved quantity evidence. -/
+def validateTimedReservation
+    (stock : StockState) (quantity : Quantity)
+    (reservedAt expiresAt : Timestamp) (status : ReservationStatus) :
+    Except ValidationError TimedReservation :=
+  if hWindow : reservedAt ≤ expiresAt then
+    if hQuantity : quantity ≤ stock.reserved then
+      Except.ok
+        { stock := stock
+          quantity := quantity
+          reservedAt := reservedAt
+          expiresAt := expiresAt
+          status := status
+          reserved_at_le_expires := hWindow
+          quantity_le_reserved := hQuantity }
+    else
+      Except.error ValidationError.inventoryInvariantFailed
+  else
+    Except.error ValidationError.inventoryInvariantFailed
+
+/-- Successful timed-reservation validation exposes its time and quantity bounds. -/
+theorem validateTimedReservation_sound
+    {stock : StockState} {quantity : Quantity}
+    {reservedAt expiresAt : Timestamp} {status : ReservationStatus}
+    {reservation : TimedReservation}
+    (_h :
+      validateTimedReservation stock quantity reservedAt expiresAt status =
+        Except.ok reservation) :
+    reservation.reservedAt ≤ reservation.expiresAt ∧
+      reservation.quantity ≤ reservation.stock.reserved := by
+  exact ⟨reservation.reserved_at_le_expires, reservation.quantity_le_reserved⟩
+
+/-- Validate release of an expired timed reservation. -/
+def validateReleaseExpiredReservation
+    (reservation : TimedReservation) (now : Timestamp) :
+    Except ValidationError StockState :=
+  if hExpired : reservationExpiredAt now reservation then
+    Except.ok (releaseExpiredReservation reservation now hExpired)
+  else
+    Except.error ValidationError.inventoryInvariantFailed
+
+/-- Successful expired-reservation release preserves stock safety. -/
+theorem validateReleaseExpiredReservation_sound
+    {reservation : TimedReservation} {now : Timestamp} {stock : StockState}
+    (_h : validateReleaseExpiredReservation reservation now = Except.ok stock) :
+    stock.reserved ≤ stock.total := by
+  exact stock.reserved_le_total
+
+/-- Validate a backorder split between immediate and delayed quantity. -/
+def validateBackorderRequest
+    (sku : Sku) (requested availableNow backordered : Quantity) :
+    Except ValidationError BackorderRequest :=
+  if hTotal : requested = availableNow + backordered then
+    Except.ok
+      { sku := sku
+        requested := requested
+        availableNow := availableNow
+        backordered := backordered
+        requested_eq_available_plus_backordered := hTotal }
+  else
+    Except.error ValidationError.inventoryInvariantFailed
+
+/-- Successful backorder validation conserves requested quantity. -/
+theorem validateBackorderRequest_sound
+    {request : BackorderRequest}
+    (_h :
+      validateBackorderRequest request.sku request.requested
+        request.availableNow request.backordered = Except.ok request) :
+    request.availableNow + request.backordered = request.requested ∧
+      request.backordered ≤ request.requested := by
+  exact ⟨backorderRequest_conserves_quantity request,
+    backorderRequest_backordered_le_requested request⟩
+
+/-- Validate preorder window ordering. -/
+def validatePreorderWindow
+    (sku : Sku) (opensAt closesAt : Timestamp) (capacity : Quantity) :
+    Except ValidationError PreorderWindow :=
+  if hWindow : opensAt ≤ closesAt then
+    Except.ok
+      { sku := sku
+        opensAt := opensAt
+        closesAt := closesAt
+        capacity := capacity
+        opens_le_closes := hWindow }
+  else
+    Except.error ValidationError.inventoryInvariantFailed
+
+/-- Successful preorder-window validation exposes ordered window bounds. -/
+theorem validatePreorderWindow_sound
+    {window : PreorderWindow}
+    (_h :
+      validatePreorderWindow window.sku window.opensAt window.closesAt
+        window.capacity = Except.ok window) :
+    window.opensAt ≤ window.closesAt := by
+  exact window.opens_le_closes
+
+/-- Validate a preorder reservation against capacity and window timing. -/
+def validatePreorderReservation
+    (window : PreorderWindow) (quantity : Quantity) (reservedAt : Timestamp) :
+    Except ValidationError PreorderReservation :=
+  if hCapacity : quantity ≤ window.capacity then
+    if hWindow : window.opensAt ≤ reservedAt ∧ reservedAt ≤ window.closesAt then
+      Except.ok
+        { window := window
+          quantity := quantity
+          reservedAt := reservedAt
+          quantity_le_capacity := hCapacity
+          reserved_in_window := hWindow }
+    else
+      Except.error ValidationError.inventoryInvariantFailed
+  else
+    Except.error ValidationError.inventoryInvariantFailed
+
+/-- Successful preorder validation proves capacity and window membership. -/
+theorem validatePreorderReservation_sound
+    {reservation : PreorderReservation}
+    (_h :
+      validatePreorderReservation reservation.window reservation.quantity
+        reservation.reservedAt = Except.ok reservation) :
+    reservation.quantity ≤ reservation.window.capacity ∧
+      reservation.window.opensAt ≤ reservation.reservedAt ∧
+      reservation.reservedAt ≤ reservation.window.closesAt := by
+  exact ⟨preorderReservation_quantity_le_capacity reservation,
+    (preorderReservation_in_window reservation).left,
+    (preorderReservation_in_window reservation).right⟩
+
+/-- Validate uniqueness of serial-numbered inventory units. -/
+def validateSerializedInventorySet (units : List SerializedInventoryUnit) :
+    Except ValidationError SerializedInventorySet :=
+  if hSerials : serialNumbersDistinct units then
+    Except.ok
+      { units := units
+        serials_distinct := hSerials }
+  else
+    Except.error ValidationError.inventoryInvariantFailed
+
+/-- Successful serialized-inventory validation proves unique serial numbers. -/
+theorem validateSerializedInventorySet_sound
+    {inventory : SerializedInventorySet}
+    (_h : validateSerializedInventorySet inventory.units = Except.ok inventory) :
+    serialNumbersDistinct inventory.units := by
+  exact serializedInventorySet_serials_distinct inventory
+
+/-- Validate that a lot is currently usable. -/
+def validateUsableInventoryLot (lot : InventoryLot) (now : Timestamp) :
+    Except ValidationError InventoryLot :=
+  if _hUsable : lotUsableAt now lot then
+    Except.ok lot
+  else
+    Except.error ValidationError.inventoryInvariantFailed
+
+/-- Successful lot validation proves the lot is usable at the checked timestamp. -/
+theorem validateUsableInventoryLot_sound
+    {lot : InventoryLot} {now : Timestamp}
+    (h : validateUsableInventoryLot lot now = Except.ok lot) :
+    lotUsableAt now lot := by
+  unfold validateUsableInventoryLot at h
+  by_cases hUsable : lotUsableAt now lot
+  · exact hUsable
+  · simp [hUsable] at h
+
+/-- Validate SKU substitution against available substitute stock. -/
+def validateSkuSubstitution
+    (requestedSku substituteSku : Sku) (substituteStock : StockState)
+    (maxSubstituteQty : Quantity) :
+    Except ValidationError SkuSubstitution :=
+  if hSku : substituteStock.sku = substituteSku then
+    if hAvailable : maxSubstituteQty ≤ availableStock substituteStock then
+      Except.ok
+        { requestedSku := requestedSku
+          substituteSku := substituteSku
+          substituteStock := substituteStock
+          maxSubstituteQty := maxSubstituteQty
+          substitute_sku_matches := hSku
+          max_qty_le_substitute_available := hAvailable }
+    else
+      Except.error ValidationError.inventoryInvariantFailed
+  else
+    Except.error ValidationError.inventoryInvariantFailed
+
+/-- Successful substitution validation proves substitute availability. -/
+theorem validateSkuSubstitution_sound
+    {rule : SkuSubstitution}
+    (_h :
+      validateSkuSubstitution rule.requestedSku rule.substituteSku
+        rule.substituteStock rule.maxSubstituteQty = Except.ok rule) :
+    rule.substituteStock.sku = rule.substituteSku ∧
+      rule.maxSubstituteQty ≤ availableStock rule.substituteStock := by
+  exact ⟨rule.substitute_sku_matches,
+    skuSubstitution_max_qty_le_available rule⟩
+
+/-- Validate a split fulfillment plan against two distinct warehouse witnesses. -/
+def validateSplitFulfillmentPlan
+    (plan : DistinctFulfillmentPlan)
+    (firstWarehouse secondWarehouse : Warehouse) :
+    Except ValidationError SplitFulfillmentPlan :=
+  if hFirst : firstWarehouse.id ∈ allocationWarehouseIds plan.allocations then
+    if hSecond : secondWarehouse.id ∈ allocationWarehouseIds plan.allocations then
+      if hDistinct : firstWarehouse.id ≠ secondWarehouse.id then
+        Except.ok
+          { plan := plan
+            firstWarehouse := firstWarehouse
+            secondWarehouse := secondWarehouse
+            first_warehouse_used := hFirst
+            second_warehouse_used := hSecond
+            warehouses_distinct := hDistinct }
+      else
+        Except.error ValidationError.inventoryInvariantFailed
+    else
+      Except.error ValidationError.inventoryInvariantFailed
+  else
+    Except.error ValidationError.inventoryInvariantFailed
+
+/-- Successful split-fulfillment validation preserves aggregate stock safety. -/
+theorem validateSplitFulfillmentPlan_sound
+    {plan : SplitFulfillmentPlan}
+    (_h :
+      validateSplitFulfillmentPlan plan.plan plan.firstWarehouse
+        plan.secondWarehouse = Except.ok plan) :
+    plan.plan.requested ≤ allocationsAvailableTotal plan.plan.allocations ∧
+      allocationKeysDistinct plan.plan.allocations ∧
+      plan.firstWarehouse.id ≠ plan.secondWarehouse.id := by
+  exact ⟨splitFulfillmentPlan_requested_le_availableTotal plan,
+    splitFulfillmentPlan_allocation_keys_distinct plan,
+    splitFulfillmentPlan_warehouses_distinct plan⟩
 
 /-! ### Order, accounting, and marketplace validators -/
 
@@ -1221,6 +1536,305 @@ def validateTaxCalculation
       Except.error ValidationError.financeInvariantFailed
   else
     Except.error ValidationError.financeInvariantFailed
+
+/-- Validate a tax-inclusive price decomposition. -/
+def validateTaxInclusivePrice (gross net tax : Money) :
+    Except ValidationError TaxInclusivePrice :=
+  if hGross : gross = net + tax then
+    Except.ok
+      { gross := gross
+        net := net
+        tax := tax
+        gross_correct := hGross }
+  else
+    Except.error ValidationError.taxInvariantFailed
+
+/-- Successful tax-inclusive price validation conserves net and tax. -/
+theorem validateTaxInclusivePrice_sound
+    {price : TaxInclusivePrice}
+    (_h :
+      validateTaxInclusivePrice price.gross price.net price.tax =
+        Except.ok price) :
+    price.net + price.tax = price.gross := by
+  exact taxInclusivePrice_conserves_components price
+
+/-- Validate a tax-exclusive price decomposition. -/
+def validateTaxExclusivePrice (net tax total : Money) :
+    Except ValidationError TaxExclusivePrice :=
+  if hTotal : total = net + tax then
+    Except.ok
+      { net := net
+        tax := tax
+        total := total
+        total_correct := hTotal }
+  else
+    Except.error ValidationError.taxInvariantFailed
+
+/-- Successful tax-exclusive price validation conserves net and tax. -/
+theorem validateTaxExclusivePrice_sound
+    {price : TaxExclusivePrice}
+    (_h :
+      validateTaxExclusivePrice price.net price.tax price.total =
+        Except.ok price) :
+    price.net + price.tax = price.total := by
+  exact taxExclusivePrice_conserves_components price
+
+/-- Raw tax invoice line before arithmetic and treatment checks. -/
+structure RawTaxInvoiceLine where
+  sku : Sku
+  quantity : Quantity
+  unitPrice : Money
+  discount : Money
+  treatment : TaxTreatment
+  rate : TaxRate
+  roundingMode : RoundingMode
+  taxableAmount : Money
+  tax : Money
+  total : Money
+
+/-- Validate a tax invoice line with discount, taxable amount, tax, and total checks. -/
+def validateTaxInvoiceLine (raw : RawTaxInvoiceLine) :
+    Except ValidationError TaxInvoiceLine :=
+  if hDiscount : raw.discount ≤ raw.unitPrice * raw.quantity then
+    if hTaxable : raw.taxableAmount = raw.unitPrice * raw.quantity - raw.discount then
+      if hTax :
+          raw.tax =
+            taxForTreatment raw.treatment raw.roundingMode raw.rate raw.taxableAmount then
+        if hTotal : raw.total = raw.taxableAmount + raw.tax then
+          Except.ok
+            { sku := raw.sku
+              quantity := raw.quantity
+              unitPrice := raw.unitPrice
+              discount := raw.discount
+              treatment := raw.treatment
+              rate := raw.rate
+              roundingMode := raw.roundingMode
+              taxableAmount := raw.taxableAmount
+              tax := raw.tax
+              total := raw.total
+              discount_le_gross := hDiscount
+              taxableAmount_correct := hTaxable
+              tax_correct := hTax
+              total_correct := hTotal }
+        else
+          Except.error ValidationError.taxInvariantFailed
+      else
+        Except.error ValidationError.taxInvariantFailed
+    else
+      Except.error ValidationError.taxInvariantFailed
+  else
+    Except.error ValidationError.taxInvariantFailed
+
+/-- Successful tax-invoice-line validation proves tax arithmetic and conservation. -/
+theorem validateTaxInvoiceLine_sound
+    {raw : RawTaxInvoiceLine} {line : TaxInvoiceLine}
+    (_h : validateTaxInvoiceLine raw = Except.ok line) :
+    line.discount ≤ line.unitPrice * line.quantity ∧
+      line.taxableAmount = line.unitPrice * line.quantity - line.discount ∧
+      line.tax = taxForTreatment line.treatment line.roundingMode
+        line.rate line.taxableAmount ∧
+      line.taxableAmount + line.tax = line.total := by
+  exact ⟨line.discount_le_gross, line.taxableAmount_correct,
+    line.tax_correct, taxInvoiceLine_total_conserves_components line⟩
+
+/-- Validate tax invoice lines in order, stopping at the first failed line. -/
+def validateTaxInvoiceLines :
+    List RawTaxInvoiceLine → Except ValidationError (List TaxInvoiceLine)
+  | [] => Except.ok []
+  | raw :: rest => do
+      let line ← validateTaxInvoiceLine raw
+      let lines ← validateTaxInvoiceLines rest
+      Except.ok (line :: lines)
+
+/-- Raw tax invoice before line and component totals have been checked. -/
+structure RawTaxInvoice where
+  id : Id
+  issuedAt : Timestamp
+  sellerId : Id
+  buyerId : CustomerId
+  jurisdiction : TaxJurisdiction
+  currency : Currency
+  lines : List RawTaxInvoiceLine
+  subtotal : Money
+  tax : Money
+  shipping : Money
+  discount : Money
+  total : Money
+
+/-- Validate a tax invoice against line totals and component conservation. -/
+def validateTaxInvoice (raw : RawTaxInvoice) :
+    Except ValidationError TaxInvoice := do
+  let lines ← validateTaxInvoiceLines raw.lines
+  if hSubtotal : raw.subtotal = invoiceLineSubtotalTotal lines then
+    if hTax : raw.tax = invoiceLineTaxTotal lines then
+      if hDiscount : raw.discount ≤ raw.subtotal + raw.tax + raw.shipping then
+        if hTotal : raw.total = raw.subtotal + raw.tax + raw.shipping - raw.discount then
+          Except.ok
+            { id := raw.id
+              issuedAt := raw.issuedAt
+              sellerId := raw.sellerId
+              buyerId := raw.buyerId
+              jurisdiction := raw.jurisdiction
+              currency := raw.currency
+              lines := lines
+              subtotal := raw.subtotal
+              tax := raw.tax
+              shipping := raw.shipping
+              discount := raw.discount
+              total := raw.total
+              subtotal_correct := hSubtotal
+              tax_correct := hTax
+              discount_le_components := hDiscount
+              total_correct := hTotal }
+        else
+          Except.error ValidationError.taxInvariantFailed
+      else
+        Except.error ValidationError.taxInvariantFailed
+    else
+      Except.error ValidationError.taxInvariantFailed
+  else
+    Except.error ValidationError.taxInvariantFailed
+
+/-- Successful tax-invoice validation proves line totals and component conservation. -/
+theorem validateTaxInvoice_sound
+    {raw : RawTaxInvoice} {invoice : TaxInvoice}
+    (_h : validateTaxInvoice raw = Except.ok invoice) :
+    invoice.subtotal = invoiceLineSubtotalTotal invoice.lines ∧
+      invoice.tax = invoiceLineTaxTotal invoice.lines ∧
+      invoice.total + invoice.discount =
+        invoice.subtotal + invoice.tax + invoice.shipping := by
+  exact ⟨taxInvoice_subtotal_matches_lines invoice,
+    taxInvoice_tax_matches_lines invoice,
+    invoice_total_add_discount_eq_components invoice⟩
+
+/-- Validate an order-to-tax-invoice link against tax amount and currency. -/
+def validateOrderTaxInvoiceLink (order : Order) (invoice : TaxInvoice) :
+    Except ValidationError OrderTaxInvoiceLink :=
+  if hTax : order.tax = invoice.tax then
+    if hCurrency : invoice.currency = order.currency then
+      Except.ok
+        { order := order
+          invoice := invoice
+          order_tax_matches_invoice := hTax
+          currency_matches := hCurrency }
+    else
+      Except.error ValidationError.taxInvariantFailed
+  else
+    Except.error ValidationError.taxInvariantFailed
+
+/-- Successful order/tax-invoice link validation proves tax and currency agreement. -/
+theorem validateOrderTaxInvoiceLink_sound
+    {link : OrderTaxInvoiceLink}
+    (_h :
+      validateOrderTaxInvoiceLink link.order link.invoice = Except.ok link) :
+    link.order.tax = link.invoice.tax ∧
+      link.invoice.currency = link.order.currency := by
+  exact ⟨orderTaxInvoiceLink_tax_matches link,
+    orderTaxInvoiceLink_currency_matches link⟩
+
+/-- Validate a B2B tax exemption certificate validity window. -/
+def validateTaxExemptionCertificate
+    (customerId : CustomerId) (jurisdictionId : Id)
+    (validFrom validUntil : Timestamp) :
+    Except ValidationError TaxExemptionCertificate :=
+  if hWindow : validFrom ≤ validUntil then
+    Except.ok
+      { customerId := customerId
+        jurisdictionId := jurisdictionId
+        validFrom := validFrom
+        validUntil := validUntil
+        valid_window := hWindow }
+  else
+    Except.error ValidationError.taxInvariantFailed
+
+/-- Successful certificate validation exposes its ordered validity window. -/
+theorem validateTaxExemptionCertificate_sound
+    {certificate : TaxExemptionCertificate}
+    (_h :
+      validateTaxExemptionCertificate certificate.customerId
+        certificate.jurisdictionId certificate.validFrom certificate.validUntil =
+        Except.ok certificate) :
+    certificate.validFrom ≤ certificate.validUntil := by
+  exact certificate.valid_window
+
+/-- Validate B2B tax exemption evidence for a customer and jurisdiction. -/
+def validateB2BTaxExemption
+    (customer : Customer) (jurisdiction : TaxJurisdiction)
+    (certificate : TaxExemptionCertificate) (checkedAt : Timestamp) :
+    Except ValidationError B2BTaxExemption :=
+  if hCustomer : certificate.customerId = customer.id then
+    if hJurisdiction : certificate.jurisdictionId = jurisdiction.id then
+      if hWholesale : customer.wholesaleApproved = true then
+        if hValid : certificateValidAt certificate checkedAt then
+          Except.ok
+            { customer := customer
+              jurisdiction := jurisdiction
+              certificate := certificate
+              checkedAt := checkedAt
+              customer_matches := hCustomer
+              jurisdiction_matches := hJurisdiction
+              wholesale_approved := hWholesale
+              certificate_valid := hValid }
+        else
+          Except.error ValidationError.taxInvariantFailed
+      else
+        Except.error ValidationError.taxInvariantFailed
+    else
+      Except.error ValidationError.taxInvariantFailed
+  else
+    Except.error ValidationError.taxInvariantFailed
+
+/-- Successful B2B exemption validation proves identity, approval, and validity. -/
+theorem validateB2BTaxExemption_sound
+    {exemption : B2BTaxExemption}
+    (_h :
+      validateB2BTaxExemption exemption.customer exemption.jurisdiction
+        exemption.certificate exemption.checkedAt = Except.ok exemption) :
+    exemption.certificate.customerId = exemption.customer.id ∧
+      exemption.certificate.jurisdictionId = exemption.jurisdiction.id ∧
+      exemption.customer.wholesaleApproved = true ∧
+      exemption.checkedAt ≤ exemption.certificate.validUntil := by
+  exact ⟨exemption.customer_matches, exemption.jurisdiction_matches,
+    b2bTaxExemption_wholesale_approved exemption,
+    b2bTaxExemption_certificate_not_expired exemption⟩
+
+/-- Validate marketplace-facilitator tax collection evidence. -/
+def validateMarketplaceFacilitatorTax
+    (marketplace : Marketplace) (jurisdiction : TaxJurisdiction)
+    (taxableAmount : Money) (rate : TaxRate) (roundingMode : RoundingMode)
+    (tax : Money) (facilitatorCollects : Bool) (sellerTaxDue : Money) :
+    Except ValidationError MarketplaceFacilitatorTax :=
+  if hTax : tax = taxAmountRounded roundingMode rate taxableAmount then
+    if hSellerDue :
+        sellerTaxDue = sellerTaxDueForFacilitator facilitatorCollects tax then
+      Except.ok
+        { marketplace := marketplace
+          jurisdiction := jurisdiction
+          taxableAmount := taxableAmount
+          rate := rate
+          roundingMode := roundingMode
+          tax := tax
+          facilitatorCollects := facilitatorCollects
+          sellerTaxDue := sellerTaxDue
+          tax_correct := hTax
+          sellerTaxDue_correct := hSellerDue }
+    else
+      Except.error ValidationError.taxInvariantFailed
+  else
+    Except.error ValidationError.taxInvariantFailed
+
+/-- Successful facilitator-tax validation proves rounding and seller due. -/
+theorem validateMarketplaceFacilitatorTax_sound
+    {tax : MarketplaceFacilitatorTax}
+    (_h :
+      validateMarketplaceFacilitatorTax tax.marketplace tax.jurisdiction
+        tax.taxableAmount tax.rate tax.roundingMode tax.tax
+        tax.facilitatorCollects tax.sellerTaxDue = Except.ok tax) :
+    tax.tax = taxAmountRounded tax.roundingMode tax.rate tax.taxableAmount ∧
+      tax.sellerTaxDue =
+        sellerTaxDueForFacilitator tax.facilitatorCollects tax.tax := by
+  exact ⟨marketplaceFacilitatorTax_uses_declared_rounding tax,
+    tax.sellerTaxDue_correct⟩
 
 /-- Validate a carrier quote against package capacity and base cost. -/
 def validateCarrierQuote

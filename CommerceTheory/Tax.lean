@@ -215,6 +215,23 @@ theorem taxInvoice_total_le_components (invoice : TaxInvoice) :
   rw [invoice.total_correct]
   exact Nat.sub_le (invoice.subtotal + invoice.tax + invoice.shipping) invoice.discount
 
+/-- Link a customer order to its tax invoice with tax and currency agreement. -/
+structure OrderTaxInvoiceLink where
+  order : Order
+  invoice : TaxInvoice
+  order_tax_matches_invoice : order.tax = invoice.tax
+  currency_matches : invoice.currency = order.currency
+
+/-- Linked order/invoice records agree on the order tax amount. -/
+theorem orderTaxInvoiceLink_tax_matches (link : OrderTaxInvoiceLink) :
+    link.order.tax = link.invoice.tax := by
+  exact link.order_tax_matches_invoice
+
+/-- Linked order/invoice records agree on currency. -/
+theorem orderTaxInvoiceLink_currency_matches (link : OrderTaxInvoiceLink) :
+    link.invoice.currency = link.order.currency := by
+  exact link.currency_matches
+
 /-- Tax exemption certificate for B2B tax-exempt sales. -/
 structure TaxExemptionCertificate where
   customerId : CustomerId
