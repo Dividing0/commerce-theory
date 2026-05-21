@@ -4,6 +4,7 @@ import CommerceTheory.ImplicitInvariants
 import CommerceTheory.InventoryAlgorithms
 import CommerceTheory.KeyedTotals
 import CommerceTheory.OpportunityRanking
+import CommerceTheory.Tax
 import CommerceTheory.Validation
 import CommerceTheory.Workflow
 
@@ -629,6 +630,85 @@ theorem marketplace_payout_rounding_error_safety
     (gross : Money) (payoutRate : BasisPoints) :
     floorRoundingRemainder (gross * payoutRate.value) 10000 < 10000 := by
   exact marketplacePayout_floor_rounding_error_lt_one_minor_unit gross payoutRate
+
+/-! ### Tax, VAT/GST, and invoicing theorems -/
+
+/-- Tax invoice totals conserve subtotal, tax, shipping, and discount. -/
+theorem tax_invoice_total_conservation
+    (invoice : TaxInvoice) :
+    invoice.subtotal + invoice.tax + invoice.shipping - invoice.discount =
+      invoice.total := by
+  exact invoice_total_conserves_components invoice
+
+/-- Adding the bounded discount back recovers the invoice component total. -/
+theorem tax_invoice_discount_conservation
+    (invoice : TaxInvoice) :
+    invoice.total + invoice.discount =
+      invoice.subtotal + invoice.tax + invoice.shipping := by
+  exact invoice_total_add_discount_eq_components invoice
+
+/-- Tax invoices expose subtotal and tax totals as sums over invoice lines. -/
+theorem tax_invoice_line_totals_match
+    (invoice : TaxInvoice) :
+    invoice.subtotal = invoiceLineSubtotalTotal invoice.lines ∧
+      invoice.tax = invoiceLineTaxTotal invoice.lines ∧
+      invoice.total ≤ invoice.subtotal + invoice.tax + invoice.shipping := by
+  exact ⟨taxInvoice_subtotal_matches_lines invoice,
+    taxInvoice_tax_matches_lines invoice,
+    taxInvoice_total_le_components invoice⟩
+
+/-- Tax-inclusive and tax-exclusive prices both conserve net and tax components. -/
+theorem tax_price_component_conservation
+    (inclusive : TaxInclusivePrice) (exclusive : TaxExclusivePrice) :
+    inclusive.net + inclusive.tax = inclusive.gross ∧
+      exclusive.net + exclusive.tax = exclusive.total := by
+  exact ⟨taxInclusivePrice_conserves_components inclusive,
+    taxExclusivePrice_conserves_components exclusive⟩
+
+/-- Exempt, zero-rated, and reverse-charge treatments collect no seller-side tax. -/
+theorem non_taxable_treatments_collect_zero_seller_tax
+    (mode : RoundingMode) (rate : TaxRate) (taxableAmount : Money) :
+    taxForTreatment TaxTreatment.Exempt mode rate taxableAmount = 0 ∧
+      taxForTreatment TaxTreatment.ZeroRated mode rate taxableAmount = 0 ∧
+      taxForTreatment TaxTreatment.ReverseCharge mode rate taxableAmount = 0 ∧
+      ¬ sellerCollectsTaxForTreatment TaxTreatment.ReverseCharge := by
+  exact ⟨exempt_taxForTreatment_zero mode rate taxableAmount,
+    zeroRated_taxForTreatment_zero mode rate taxableAmount,
+    reverseCharge_taxForTreatment_zero mode rate taxableAmount,
+    reverseCharge_treatment_has_no_seller_collection⟩
+
+/-- B2B exemption certificates prove customer, jurisdiction, validity, and zero tax. -/
+theorem b2b_tax_exemption_certificate_safety
+    (exemption : B2BTaxExemption)
+    (mode : RoundingMode) (rate : TaxRate) (taxableAmount : Money) :
+    exemption.certificate.customerId = exemption.customer.id ∧
+      exemption.certificate.jurisdictionId = exemption.jurisdiction.id ∧
+      exemption.customer.wholesaleApproved = true ∧
+      exemption.checkedAt ≤ exemption.certificate.validUntil ∧
+      taxForTreatment TaxTreatment.Exempt mode rate taxableAmount = 0 := by
+  exact ⟨exemption.customer_matches, exemption.jurisdiction_matches,
+    b2bTaxExemption_wholesale_approved exemption,
+    b2bTaxExemption_certificate_not_expired exemption,
+    (b2bExemption_collects_zero_tax exemption mode rate taxableAmount).right⟩
+
+/-- Marketplace-facilitator tax exposes rounding and zero seller due when collected. -/
+theorem marketplace_facilitator_tax_safety
+    (tax : MarketplaceFacilitatorTax)
+    (hCollects : tax.facilitatorCollects = true) :
+    tax.tax = taxAmountRounded tax.roundingMode tax.rate tax.taxableAmount ∧
+      tax.sellerTaxDue = 0 := by
+  exact ⟨marketplaceFacilitatorTax_uses_declared_rounding tax,
+    marketplaceFacilitator_collected_zero_seller_due tax hCollects⟩
+
+/-- Invoice lines conserve taxable amount and tax, with bounded floor rounding error. -/
+theorem tax_invoice_line_rounding_and_total_safety
+    (line : TaxInvoiceLine) :
+    line.tax = taxForTreatment line.treatment line.roundingMode line.rate line.taxableAmount ∧
+      line.taxableAmount + line.tax = line.total ∧
+      floorRoundingRemainder
+        (line.taxableAmount * line.rate.bps.value) 10000 < 10000 := by
+  exact ⟨line.tax_correct, taxInvoiceLine_total_conserves_components line,
+    invoiceLine_floor_tax_rounding_error_lt_one_minor_unit line⟩
 
 /-- Bounded coupon applications conserve subtotal after applying the discount amount. -/
 theorem bounded_coupon_application_conservation
