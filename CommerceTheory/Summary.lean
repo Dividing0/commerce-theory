@@ -1178,6 +1178,105 @@ theorem crm_contact_permission_safety
       message.contact.dataPermission.basis = ProcessingBasis.Consent := by
   exact message.permitted
 
+/-! ### Regulatory and compliance theorems -/
+
+/-- Consent withdrawal propagates to the marketing eligibility gate. -/
+theorem regulatory_consent_withdrawal_blocks_marketing
+    (state : MarketingConsentState) :
+    ¬ marketingAllowed (withdrawMarketingConsent state) := by
+  exact consent_withdrawal_blocks_future_marketing state
+
+/-- Consent withdrawal also blocks retargeting and data-processing permission. -/
+theorem regulatory_consent_withdrawal_blocks_retargeting_and_processing
+    (state : MarketingConsentState) :
+    ¬ canRetarget (withdrawMarketingConsent state).retargetingConsent ∧
+      ¬ dataProcessingAllowed (withdrawMarketingConsent state).dataPermission := by
+  exact ⟨consent_withdrawal_blocks_retargeting state,
+    consent_withdrawal_blocks_data_processing state⟩
+
+/-- Purpose limitation prevents reusing a permission for a mismatched purpose. -/
+theorem regulatory_purpose_limitation_blocks_mismatched_processing
+    (permission : DataProcessingPermission)
+    (requested : ConsentPurpose)
+    (basis : ProcessingBasis)
+    (hMismatch : permission.purpose ≠ requested) :
+    ¬ processingAllowedFor permission requested basis := by
+  exact purpose_limitation_blocks_mismatched_purpose
+    permission requested basis hMismatch
+
+/-- Legal-basis limitation prevents reusing a permission under a mismatched basis. -/
+theorem regulatory_basis_limitation_blocks_mismatched_processing
+    (permission : DataProcessingPermission)
+    (purpose : ConsentPurpose)
+    (requestedBasis : ProcessingBasis)
+    (hMismatch : permission.basis ≠ requestedBasis) :
+    ¬ processingAllowedFor permission purpose requestedBasis := by
+  exact processing_basis_limitation_blocks_mismatch
+    permission purpose requestedBasis hMismatch
+
+/-- Expired personal data cannot be retained under the same policy and clock. -/
+theorem regulatory_expired_data_cannot_be_retained
+    (policy : DataRetentionPolicy) (now collectedAt : Timestamp)
+    (hExpired : retentionExpired policy now collectedAt) :
+    ¬ canRetainPersonalData policy now collectedAt := by
+  exact expired_personal_data_cannot_be_retained policy now collectedAt hExpired
+
+/-- Right-to-erasure requests block new personal-data processing. -/
+theorem regulatory_erasure_request_blocks_processing
+    (permission : DataProcessingPermission)
+    (purpose : ConsentPurpose)
+    (basis : ProcessingBasis) :
+    ¬ canProcessPersonalData ErasureStatus.Requested permission purpose basis := by
+  exact erasure_request_blocks_processing permission purpose basis
+
+/-- Completed erasure blocks new personal-data processing. -/
+theorem regulatory_completed_erasure_blocks_processing
+    (permission : DataProcessingPermission)
+    (purpose : ConsentPurpose)
+    (basis : ProcessingBasis) :
+    ¬ canProcessPersonalData ErasureStatus.Completed permission purpose basis := by
+  exact completed_erasure_blocks_processing permission purpose basis
+
+/-- Legal hold blocks right-to-erasure completion. -/
+theorem regulatory_legal_hold_blocks_erasure_completion
+    (status : ErasureStatus) :
+    ¬ canCompleteErasure status true := by
+  exact legal_hold_blocks_erasure_completion status
+
+/-- Customer support can view order data but not full payment-token data. -/
+theorem support_order_access_excludes_payment_token :
+    roleCanAccessData Role.Support AccessPurpose.CustomerSupport DataCategory.OrderData ∧
+      ¬ roleCanAccessData Role.Support AccessPurpose.CustomerSupport DataCategory.PaymentToken := by
+  exact ⟨support_can_view_order_for_support, support_cannot_view_full_payment_token⟩
+
+/-- Append-only audit logs preserve every pre-existing event. -/
+theorem regulatory_append_only_audit_log_preserves_event
+    {before after newEvents : List EntityAuditEvent}
+    {event : EntityAuditEvent}
+    (hAppend : auditLogAppended before after newEvents)
+    (hMem : event ∈ before) :
+    event ∈ after := by
+  exact append_only_audit_log_preserves_event hAppend hMem
+
+/-- Append-only audit logs cannot shrink. -/
+theorem regulatory_append_only_audit_log_length_safety
+    {before after newEvents : List EntityAuditEvent}
+    (hAppend : auditLogAppended before after newEvents) :
+    before.length ≤ after.length := by
+  exact append_only_audit_log_length_ge hAppend
+
+/-- Audited data access proves both command permission and least-privilege data access. -/
+theorem audited_data_access_least_privilege_safety
+    (access : AuditedDataAccess) :
+    CanPerform access.actor access.action ∧
+      roleCanAccessData access.actor access.purpose access.category ∧
+      access.event.actor = access.actor ∧
+      access.event.action = access.action ∧
+      access.event.subjectId = access.subjectId := by
+  exact ⟨access.action_allowed, access.data_allowed,
+    access.event_actor_matches, access.event_action_matches,
+    access.event_subject_matches⟩
+
 /-- Resolved CRM support cases prove status, timing, and SLA safety. -/
 theorem crm_support_case_sla_safety
     (case_ : ResolvedSupportCase) :
