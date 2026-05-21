@@ -220,7 +220,7 @@ theorem wholesale_credit_checkout_safety
 theorem trusted_fresh_competitor_benchmark_safety
     (benchmark : TrustedFreshCompetitorBenchmark) :
     benchmark.benchmark.bestOffer.observedAt ≤ benchmark.now ∧
-      benchmark.now - benchmark.benchmark.bestOffer.observedAt ≤ benchmark.maxAge ∧
+      timestampAge benchmark.now benchmark.benchmark.bestOffer.observedAt ≤ benchmark.maxAge ∧
       competitorOfferRelevant
         benchmark.benchmark.bestOffer benchmark.benchmark.sku benchmark.benchmark.currency ∧
       trustAllowsAutoRepricing benchmark.trust := by
@@ -243,7 +243,7 @@ theorem fresh_currency_conversion_safety
       conversion.targetAmount.amount =
         convertMoneyFloor conversion.sourceAmount.amount conversion.rate ∧
       conversion.rate.observedAt ≤ conversion.now ∧
-      conversion.now - conversion.rate.observedAt ≤ conversion.maxAge := by
+      timestampAge conversion.now conversion.rate.observedAt ≤ conversion.maxAge := by
   exact ⟨conversion.source_matches_rate, conversion.target_matches_rate,
     conversion.amount_correct, conversion.rate_fresh.left, conversion.rate_fresh.right⟩
 

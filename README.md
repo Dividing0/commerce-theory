@@ -14,12 +14,14 @@ opportunity selection, CRM, and logistics.
 - Dependencies:
   - `leanprover-community/mathlib`, pinned to `v4.29.1`
   - `leanprover/cslib`, pinned to `v4.29.0`
+  - `ammkrn/timelib`, pinned in `lake-manifest.json` to
+    `2c69e4a597a99d1ce748dea67af430db20ca0ea8`
 
 ## Project Layout
 
 - `CommerceTheory/Foundation.lean`: shared commercial numeric types, fixed-scale
-  minor-unit money, signed profit/loss, decimal money, rounding modes, ids,
-  currencies, basis points, and profit arithmetic.
+  minor-unit money, signed profit/loss, decimal money, timelib-backed date/time
+  types, rounding modes, ids, currencies, basis points, and profit arithmetic.
 - `CommerceTheory/Catalog.lean`: products, variants, catalog entries, listing
   content, and marketplace content policy validation.
 - `CommerceTheory/Inventory.lean`: stock, reservations, optimistic locking,
@@ -193,3 +195,9 @@ ordinary ledgers and as `SignedMoney` for profit/loss. The old conservative
 fees, and payout calculations now carry explicit `RoundingMode` evidence, with
 floor-rounding theorem families bounding residual error by one minor unit per
 line/item.
+
+Date/time values are modeled through `ammkrn/timelib`: `Timestamp` is a
+second-precision `Timelib.NaiveDateTime 0`, `Duration` is a second-precision
+`Timelib.SignedDuration 0`, and `Days` is represented as an exact duration.
+Freshness checks compare `timestampAge now observedAt` against a duration
+window, rather than subtracting natural-number timestamp aliases.

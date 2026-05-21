@@ -25,21 +25,21 @@ def competitorOfferRelevant (offer : CompetitorOffer) (sku : Sku) (currency : Cu
   offer.sku = sku ∧ offer.currency = currency ∧ offer.active = true ∧ offer.inStock = true
 
 /-- Computes or checks `priceSnapshotFresh` using the validated data in this module. -/
-def priceSnapshotFresh (now maxAge observedAt : Timestamp) : Prop :=
-  observedAt ≤ now ∧ now - observedAt ≤ maxAge
+def priceSnapshotFresh (now : Timestamp) (maxAge : Duration) (observedAt : Timestamp) : Prop :=
+  observedAt ≤ now ∧ timestampAge now observedAt ≤ maxAge
 
 /-- Fresh competitor snapshots were not observed in the future. -/
 theorem priceSnapshotFresh_observedAt_le_now
-    (now maxAge observedAt : Timestamp)
+    (now observedAt : Timestamp) (maxAge : Duration)
     (h : priceSnapshotFresh now maxAge observedAt) :
     observedAt ≤ now := by
   exact h.left
 
 /-- Fresh competitor snapshots are inside the accepted age window. -/
 theorem priceSnapshotFresh_age_le_maxAge
-    (now maxAge observedAt : Timestamp)
+    (now observedAt : Timestamp) (maxAge : Duration)
     (h : priceSnapshotFresh now maxAge observedAt) :
-    now - observedAt ≤ maxAge := by
+    timestampAge now observedAt ≤ maxAge := by
   exact h.right
 
 /-- Closed set of cases for `TrustLevel` in the commerce domain model. -/

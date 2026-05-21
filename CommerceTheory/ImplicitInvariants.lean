@@ -384,7 +384,7 @@ theorem wholesaleCreditCheckout_net_le_retail_equivalent
 structure TrustedFreshCompetitorBenchmark where
   benchmark : CompetitorPriceBenchmark
   now : Timestamp
-  maxAge : Timestamp
+  maxAge : Duration
   trust : TrustLevel
   fresh_best_offer : priceSnapshotFresh now maxAge benchmark.bestOffer.observedAt
   trust_allows_auto : trustAllowsAutoRepricing trust
@@ -398,7 +398,7 @@ theorem trustedFreshBenchmark_observedAt_le_now
 /-- Trusted fresh benchmarks expose that the best offer is within the accepted age. -/
 theorem trustedFreshBenchmark_age_le_maxAge
     (benchmark : TrustedFreshCompetitorBenchmark) :
-    benchmark.now - benchmark.benchmark.bestOffer.observedAt ≤ benchmark.maxAge := by
+    timestampAge benchmark.now benchmark.benchmark.bestOffer.observedAt ≤ benchmark.maxAge := by
   exact benchmark.fresh_best_offer.right
 
 /-- Trusted fresh benchmarks keep the usual relevance proof for the best offer. -/
@@ -433,7 +433,7 @@ structure FreshCurrencyConversion where
   rate : ExchangeRate
   targetAmount : MoneyAmount
   now : Timestamp
-  maxAge : Timestamp
+  maxAge : Duration
   source_matches_rate : sourceAmount.currency = rate.source
   target_matches_rate : targetAmount.currency = rate.target
   amount_correct : targetAmount.amount = convertMoneyFloor sourceAmount.amount rate
@@ -467,7 +467,7 @@ theorem freshCurrencyConversion_rate_observedAt_le_now
 /-- Fresh currency conversions use a rate within the accepted age window. -/
 theorem freshCurrencyConversion_rate_age_le_maxAge
     (conversion : FreshCurrencyConversion) :
-    conversion.now - conversion.rate.observedAt ≤ conversion.maxAge := by
+    timestampAge conversion.now conversion.rate.observedAt ≤ conversion.maxAge := by
   exact conversion.rate_fresh.right
 
 /-- A gift-card redemption paired with the timestamp at which the card was valid. -/

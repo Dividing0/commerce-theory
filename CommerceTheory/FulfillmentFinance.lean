@@ -20,19 +20,19 @@ structure ExchangeRate where
   observedAt : Timestamp
 
 /-- Computes or checks `fxQuoteFresh` using the validated data in this module. -/
-def fxQuoteFresh (now maxAge : Timestamp) (r : ExchangeRate) : Prop :=
-  r.observedAt ≤ now ∧ now - r.observedAt ≤ maxAge
+def fxQuoteFresh (now : Timestamp) (maxAge : Duration) (r : ExchangeRate) : Prop :=
+  r.observedAt ≤ now ∧ timestampAge now r.observedAt ≤ maxAge
 
 /-- A fresh FX quote was not observed in the future relative to `now`. -/
 theorem fxQuoteFresh_observedAt_le_now
-    (now maxAge : Timestamp) (r : ExchangeRate) (h : fxQuoteFresh now maxAge r) :
+    (now : Timestamp) (maxAge : Duration) (r : ExchangeRate) (h : fxQuoteFresh now maxAge r) :
     r.observedAt ≤ now := by
   exact h.left
 
 /-- A fresh FX quote is within the permitted age window. -/
 theorem fxQuoteFresh_age_le_maxAge
-    (now maxAge : Timestamp) (r : ExchangeRate) (h : fxQuoteFresh now maxAge r) :
-    now - r.observedAt ≤ maxAge := by
+    (now : Timestamp) (maxAge : Duration) (r : ExchangeRate) (h : fxQuoteFresh now maxAge r) :
+    timestampAge now r.observedAt ≤ maxAge := by
   exact h.right
 
 /-- Convert money with an explicit rounding mode. -/

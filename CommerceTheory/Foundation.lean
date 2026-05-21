@@ -1,4 +1,5 @@
 import Mathlib
+import Timelib
 
 namespace CommerceTheory
 
@@ -10,8 +11,10 @@ This module defines the shared vocabulary used by the rest of the theory.
 Commercial amounts use explicit domain names instead of broad `Nat` aliases:
 non-negative money is fixed-scale minor units, signed profit/loss is an integer,
 and decimal money can carry an explicit scale when a proof needs to discuss a
-pre-rounded value. Operational counts, weights, times, and ids are still
-non-negative by construction, but each now has a named commercial role.
+pre-rounded value. Date/time values are backed by `ammkrn/timelib` so timestamps
+and elapsed durations are no longer plain natural numbers. Operational counts,
+weights, and ids remain non-negative by construction, but each now has a named
+commercial role.
 -/
 
 /-- Minor units are fixed-scale units such as cents, kopiykas, or pence. -/
@@ -36,12 +39,36 @@ abbrev Money := NonNegMoney
 abbrev Quantity := Nat
 /-- Non-negative shipment/package weight units chosen by the model. -/
 abbrev Weight := Nat
-/-- Non-negative monotone timestamp units chosen by the model. -/
-abbrev Timestamp := Nat
-/-- Non-negative day counts. -/
-abbrev Days := Nat
+/-- Proleptic Gregorian date from `timelib`. -/
+abbrev Date := Timelib.Ymd
+/-- Proleptic Gregorian naive timestamp at second precision from `timelib`. -/
+abbrev Timestamp := Timelib.NaiveDateTime 0
+/-- Elapsed duration at second precision from `timelib`. -/
+abbrev Duration := Timelib.SignedDuration 0
+/-- Business day windows represented as exact second-precision durations. -/
+abbrev Days := Duration
 /-- Non-negative opaque runtime id values. -/
 abbrev Id := Nat
+
+/-! ### Date/time helpers -/
+
+/-- Construct a second-precision timestamp from Gregorian date and wall-clock fields. -/
+def timestampFromYmdhms?
+    (year : Int) (month day hour minute second : Nat) : Option Timestamp :=
+  Timelib.NaiveDateTime.fromYmdhms?
+    (siPow := 0) year month day hour minute second
+
+/-- The Unix epoch as a `Timestamp`. -/
+def unixEpochTimestamp : Timestamp :=
+  Timelib.NaiveDateTime.unixEpoch (siPow := 0) (by decide)
+
+/-- Compute elapsed time between two timestamps. -/
+def timestampAge (now observedAt : Timestamp) : Duration :=
+  now - observedAt
+
+/-- Convert a natural number of whole days into the model's elapsed-duration type. -/
+def days (n : Nat) : Days :=
+  Timelib.SignedDuration.oneDay (siPow := 0) (by decide) * Int.ofNat n
 
 /-! ### Rounding and signed money helpers -/
 
