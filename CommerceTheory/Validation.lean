@@ -126,6 +126,12 @@ local instance instDecidableContactCanReceiveMarketing
   unfold contactCanReceiveMarketing
   infer_instance
 
+local instance instDecidableCRMAccountActive
+    (account : CRMAccount) :
+    Decidable (crmAccountActive account) := by
+  unfold crmAccountActive
+  infer_instance
+
 local instance instDecidableOpportunityStageProbabilityAllowed
     (stage : OpportunityStage) (probability : BasisPoints) :
     Decidable (opportunityStageProbabilityAllowed stage probability) := by
