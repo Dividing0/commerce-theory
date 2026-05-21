@@ -194,22 +194,22 @@ theorem validDomainEventStep_preserves_validity
     after.stock.reserved ≤ after.stock.total ∧
       after.ledger.refunded ≤ after.ledger.captured := by
   cases h with
-  | stockReserved sku quantity hSku hReserve =>
-      exact applyStockReservedEvent_preserves_validity before sku quantity hSku hReserve
-  | refundIssued orderId amount hRefund =>
-      exact applyRefundIssuedEvent_preserves_validity before amount hRefund
-  | reservationReleased sku quantity hSku hReserved =>
+  | stockReserved state sku quantity hSku hReserve =>
+      exact applyStockReservedEvent_preserves_validity state sku quantity hSku hReserve
+  | refundIssued state orderId amount hRefund =>
+      exact applyRefundIssuedEvent_preserves_validity state amount hRefund
+  | reservationReleased state sku quantity hSku hReserved =>
       exact applyReservationReleasedEvent_preserves_validity
-        before sku quantity hSku hReserved
-  | reservedShipmentConfirmed sku quantity hSku hReserved =>
+        state sku quantity hSku hReserved
+  | reservedShipmentConfirmed state sku quantity hSku hReserved =>
       exact applyReservedShipmentConfirmedEvent_preserves_validity
-        before sku quantity hSku hReserved
-  | taxLiabilityRecorded id amount =>
-      exact applyTaxLiabilityRecordedEvent_preserves_validity before amount
-  | crmProjected hCRM =>
-      exact applyCRMProjectedEvent_preserves_validity before
-  | logisticsProjected hLogistics =>
-      exact applyLogisticsProjectedEvent_preserves_validity before
+        state sku quantity hSku hReserved
+  | taxLiabilityRecorded state id amount =>
+      exact applyTaxLiabilityRecordedEvent_preserves_validity state amount
+  | crmProjected event state hCRM =>
+      exact applyCRMProjectedEvent_preserves_validity state
+  | logisticsProjected event state hLogistics =>
+      exact applyLogisticsProjectedEvent_preserves_validity state
 
 /-- Any exact-step valid system replay preserves stock and ledger validity. -/
 theorem validSystemReplayInSteps_preserves_validity
