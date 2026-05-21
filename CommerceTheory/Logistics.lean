@@ -90,6 +90,52 @@ def allocationsMatchCartSkus (items : List CartLine) : List Allocation → Prop
       cartContainsSku allocation.node.stock.sku items ∧
         allocationsMatchCartSkus items rest
 
+/-- Quantity for a single SKU in a cart. -/
+def cartSkuQuantityTotal (sku : Sku) : List CartLine → Quantity
+  | [] => 0
+  | line :: rest =>
+      (if line.sku = sku then line.quantity else 0) +
+        cartSkuQuantityTotal sku rest
+
+/-- Quantity for a single SKU in fulfillment allocations. -/
+def allocationSkuQuantityTotal (sku : Sku) : List Allocation → Quantity
+  | [] => 0
+  | allocation :: rest =>
+      (if allocation.node.stock.sku = sku then allocation.quantity else 0) +
+        allocationSkuQuantityTotal sku rest
+
+/-- SKU support induced by cart lines. -/
+def cartSkuSupport : List CartLine → List Sku
+  | [] => []
+  | line :: rest => line.sku :: cartSkuSupport rest
+
+/-- SKU support induced by fulfillment allocations. -/
+def allocationSkuSupport : List Allocation → List Sku
+  | [] => []
+  | allocation :: rest => allocation.node.stock.sku :: allocationSkuSupport rest
+
+/-- Finite SKU support that must be checked for cart/allocation quantity equality. -/
+def shipmentSkuQuantitySupport (items : List CartLine) (allocations : List Allocation) :
+    List Sku :=
+  cartSkuSupport items ++ allocationSkuSupport allocations
+
+/-- Recursive per-SKU quantity equality check over a finite SKU support. -/
+def shipmentSkuQuantitiesMatchKeys
+    (items : List CartLine) (allocations : List Allocation) : List Sku → Prop
+  | [] => True
+  | sku :: rest =>
+      cartSkuQuantityTotal sku items = allocationSkuQuantityTotal sku allocations ∧
+        shipmentSkuQuantitiesMatchKeys items allocations rest
+
+/--
+Allocated quantities must match cart quantities for every SKU that appears in
+either the cart or the allocation list.
+-/
+def allocationQuantitiesMatchCartSkus
+    (items : List CartLine) (allocations : List Allocation) : Prop :=
+  shipmentSkuQuantitiesMatchKeys items allocations
+    (shipmentSkuQuantitySupport items allocations)
+
 /-- Every allocation in a single-origin shipment must come from the origin warehouse. -/
 def allocationsUseWarehouse (warehouse : Warehouse) : List Allocation → Prop
   | [] => True
@@ -102,6 +148,13 @@ theorem allocationsMatchCartSkus_head
     (items : List CartLine) (allocation : Allocation) (rest : List Allocation)
     (h : allocationsMatchCartSkus items (allocation :: rest)) :
     cartContainsSku allocation.node.stock.sku items := by
+  exact h.left
+
+/-- Nonempty finite SKU checks expose the first SKU's quantity equality. -/
+theorem shipmentSkuQuantitiesMatchKeys_head
+    (items : List CartLine) (allocations : List Allocation) (sku : Sku) (rest : List Sku)
+    (h : shipmentSkuQuantitiesMatchKeys items allocations (sku :: rest)) :
+    cartSkuQuantityTotal sku items = allocationSkuQuantityTotal sku allocations := by
   exact h.left
 
 /-- Nonempty warehouse checks expose the first allocation's origin warehouse. -/
@@ -125,6 +178,8 @@ structure LogisticsShipmentPlan where
   order_eligible : orderEligibleForLogistics order
   quantity_matches_cart : fulfillment.requested = cartQuantityTotal order.items
   allocations_match_cart_skus : allocationsMatchCartSkus order.items fulfillment.allocations
+  allocation_quantities_match_cart_skus :
+    allocationQuantitiesMatchCartSkus order.items fulfillment.allocations
   allocations_use_warehouse : allocationsUseWarehouse warehouse fulfillment.allocations
   quote_package_matches : quote.package = package
   quote_zone_matches_destination : quote.service.zone = destination.zone
@@ -155,6 +210,12 @@ theorem shipmentPlan_allocation_keys_distinct (plan : LogisticsShipmentPlan) :
 theorem shipmentPlan_allocations_match_cart_skus (plan : LogisticsShipmentPlan) :
     allocationsMatchCartSkus plan.order.items plan.fulfillment.allocations := by
   exact plan.allocations_match_cart_skus
+
+/-- Shipment plan allocation quantities match the cart quantity for every referenced SKU. -/
+theorem shipmentPlan_allocation_quantities_match_cart_skus
+    (plan : LogisticsShipmentPlan) :
+    allocationQuantitiesMatchCartSkus plan.order.items plan.fulfillment.allocations := by
+  exact plan.allocation_quantities_match_cart_skus
 
 /-- Shipment plan allocations all originate from the plan's warehouse. -/
 theorem shipmentPlan_allocations_use_warehouse (plan : LogisticsShipmentPlan) :

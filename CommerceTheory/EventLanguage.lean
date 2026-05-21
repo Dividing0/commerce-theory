@@ -76,7 +76,9 @@ def orderEventValidator :
     Cslib.Automata.DA.FinAcc OrderEventValidationState OrderEventSymbol where
   tr := orderEventValidationStep
   start := OrderEventValidationState.Start
-  accept := { state | state ≠ OrderEventValidationState.Invalid }
+  accept := { state |
+    state = OrderEventValidationState.Shipped ∨
+      state = OrderEventValidationState.Refunded }
 
 /-- A normal place/capture/ship word is accepted. -/
 theorem paidShipEventWord_accepted :
@@ -85,6 +87,27 @@ theorem paidShipEventWord_accepted :
       , OrderEventSymbol.PaymentCaptured
       , OrderEventSymbol.OrderShipped
       ] ∈ orderEventValidator.accept := by
+  simp [orderEventValidator, orderEventValidationStep, Cslib.FLTS.mtr]
+
+/-- A normal place/capture/refund word is accepted as a complete lifecycle. -/
+theorem capturedRefundEventWord_accepted :
+    orderEventValidator.mtr orderEventValidator.start
+      [ OrderEventSymbol.OrderPlaced
+      , OrderEventSymbol.PaymentCaptured
+      , OrderEventSymbol.RefundIssued
+      ] ∈ orderEventValidator.accept := by
+  simp [orderEventValidator, orderEventValidationStep, Cslib.FLTS.mtr]
+
+/-- Empty event words are not complete order lifecycles. -/
+theorem emptyEventWord_rejected :
+    orderEventValidator.mtr orderEventValidator.start [] ∉
+      orderEventValidator.accept := by
+  simp [orderEventValidator, Cslib.FLTS.mtr]
+
+/-- A placed-only prefix is not accepted as a complete order lifecycle. -/
+theorem placedOnlyEventWord_rejected :
+    orderEventValidator.mtr orderEventValidator.start
+      [OrderEventSymbol.OrderPlaced] ∉ orderEventValidator.accept := by
   simp [orderEventValidator, orderEventValidationStep, Cslib.FLTS.mtr]
 
 /-- Refund before capture is rejected by the automaton. -/

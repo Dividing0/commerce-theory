@@ -284,6 +284,24 @@ local instance instDecidableAllocationsMatchCartSkus
       unfold allocationsMatchCartSkus
       infer_instance
 
+local instance instDecidableShipmentSkuQuantitiesMatchKeys
+    (items : List CartLine) (allocations : List Allocation) (keys : List Sku) :
+    Decidable (shipmentSkuQuantitiesMatchKeys items allocations keys) := by
+  induction keys with
+  | nil =>
+      unfold shipmentSkuQuantitiesMatchKeys
+      infer_instance
+  | cons _sku rest ih =>
+      letI : Decidable (shipmentSkuQuantitiesMatchKeys items allocations rest) := ih
+      unfold shipmentSkuQuantitiesMatchKeys
+      infer_instance
+
+local instance instDecidableAllocationQuantitiesMatchCartSkus
+    (items : List CartLine) (allocations : List Allocation) :
+    Decidable (allocationQuantitiesMatchCartSkus items allocations) := by
+  unfold allocationQuantitiesMatchCartSkus
+  infer_instance
+
 local instance instDecidableAllocationsUseWarehouse
     (warehouse : Warehouse) (allocations : List Allocation) :
     Decidable (allocationsUseWarehouse warehouse allocations) := by
@@ -343,6 +361,7 @@ local instance instDecidableStreamSequencesStrictlyIncrease
 /-- Validation failures produced while converting raw data into safe records. -/
 inductive ValidationError where
   | lineDiscountExceedsGross
+  | couponExceedsSubtotal
   | shippingUnavailable
   | orderTotalMismatch
   | stockReservedExceedsTotal
@@ -384,6 +403,22 @@ structure RawCartLine where
   discount : Money
   weight : Weight
 
+/-- A validated cart line preserves the source raw fields it was built from. -/
+def cartLineMatchesRaw (raw : RawCartLine) (line : CartLine) : Prop :=
+  line.sku = raw.sku ∧
+    line.price = raw.price ∧
+    line.cost = raw.cost ∧
+    line.quantity = raw.quantity ∧
+    line.discount = raw.discount ∧
+    line.weight = raw.weight
+
+/-- Cart-line lists preserve source fields pointwise and length-exactly. -/
+def cartLinesMatchRaw : List RawCartLine → List CartLine → Prop
+  | [], [] => True
+  | raw :: raws, line :: lines =>
+      cartLineMatchesRaw raw line ∧ cartLinesMatchRaw raws lines
+  | _, _ => False
+
 /-- Validate a raw cart line by checking that its discount fits inside gross value. -/
 def validateCartLine (raw : RawCartLine) : Except ValidationError CartLine :=
   if hDiscount : raw.discount ≤ raw.price * raw.quantity then
@@ -405,6 +440,18 @@ theorem validateCartLine_sound
     line.discount ≤ line.price * line.quantity := by
   exact line.discount_le_gross
 
+/-- Successful cart-line validation preserves all source fields. -/
+theorem validateCartLine_matches_raw
+    {raw : RawCartLine} {line : CartLine}
+    (h : validateCartLine raw = Except.ok line) :
+    cartLineMatchesRaw raw line := by
+  unfold validateCartLine at h
+  by_cases hDiscount : raw.discount ≤ raw.price * raw.quantity
+  · simp [hDiscount] at h
+    cases h
+    exact ⟨rfl, rfl, rfl, rfl, rfl, rfl⟩
+  · simp [hDiscount] at h
+
 /-- Validate all cart lines in order, stopping at the first failed line. -/
 def validateCartLines : List RawCartLine → Except ValidationError (List CartLine)
   | [] => Except.ok []
@@ -412,6 +459,29 @@ def validateCartLines : List RawCartLine → Except ValidationError (List CartLi
       let line ← validateCartLine raw
       let lines ← validateCartLines rest
       Except.ok (line :: lines)
+
+/-- Successful cart-line-list validation preserves source fields pointwise. -/
+theorem validateCartLines_matches_raw
+    {raws : List RawCartLine} {lines : List CartLine}
+    (h : validateCartLines raws = Except.ok lines) :
+    cartLinesMatchRaw raws lines := by
+  induction raws generalizing lines with
+  | nil =>
+      simp [validateCartLines] at h
+      cases h
+      simp [cartLinesMatchRaw]
+  | cons raw rest ih =>
+      cases hLine : validateCartLine raw with
+      | error e =>
+          simp [validateCartLines, hLine] at h
+      | ok line =>
+          cases hRest : validateCartLines rest with
+          | error e =>
+              simp [validateCartLines, hLine, hRest] at h
+          | ok restLines =>
+              simp [validateCartLines, hLine, hRest] at h
+              cases h
+              exact ⟨validateCartLine_matches_raw hLine, ih hRest⟩
 
 /-- Raw order data before shipping capacity and total calculation are checked. -/
 structure RawOrder where
@@ -424,27 +494,42 @@ structure RawOrder where
   status : OrderStatus
   total : Money
 
+/-- A validated order preserves the source raw scalar fields and validated cart lines. -/
+def orderMatchesRaw (raw : RawOrder) (order : Order) : Prop :=
+  order.id = raw.id ∧
+    cartLinesMatchRaw raw.items order.items ∧
+    order.couponAmount = raw.couponAmount ∧
+    order.shippingMethod = raw.shippingMethod ∧
+    order.tax = raw.tax ∧
+    order.currency = raw.currency ∧
+    order.status = raw.status ∧
+    order.total = raw.total
+
 /-- Validate a raw order by checking its lines, shipping capacity, and computed total. -/
 def validateOrder (raw : RawOrder) : Except ValidationError Order := do
   let items ← validateCartLines raw.items
-  if hShipping : shippingAvailable raw.shippingMethod (cartWeightTotal items) then
-    if hTotal :
-        raw.total = orderTotal raw.shippingMethod raw.couponAmount raw.tax items then
-      Except.ok
-        { id := raw.id
-          items := items
-          couponAmount := raw.couponAmount
-          shippingMethod := raw.shippingMethod
-          tax := raw.tax
-          currency := raw.currency
-          status := raw.status
-          total := raw.total
-          shipping_available := hShipping
-          total_correct := hTotal }
+  if hCoupon : raw.couponAmount ≤ cartNetTotal items then
+    if hShipping : shippingAvailable raw.shippingMethod (cartWeightTotal items) then
+      if hTotal :
+          raw.total = orderTotal raw.shippingMethod raw.couponAmount raw.tax items then
+        Except.ok
+          { id := raw.id
+            items := items
+            couponAmount := raw.couponAmount
+            shippingMethod := raw.shippingMethod
+            tax := raw.tax
+            currency := raw.currency
+            status := raw.status
+            total := raw.total
+            coupon_le_cart_net := hCoupon
+            shipping_available := hShipping
+            total_correct := hTotal }
+      else
+        Except.error ValidationError.orderTotalMismatch
     else
-      Except.error ValidationError.orderTotalMismatch
+      Except.error ValidationError.shippingUnavailable
   else
-    Except.error ValidationError.shippingUnavailable
+    Except.error ValidationError.couponExceedsSubtotal
 
 /-- Successful order validation returns an order with the standard pricing bound. -/
 theorem validateOrder_sound
@@ -461,6 +546,35 @@ theorem validateOrder_total_matches_calculation
     order.total =
       orderTotal order.shippingMethod order.couponAmount order.tax order.items := by
   exact order.total_correct
+
+/-- Successful order validation carries the coupon subtotal bound. -/
+theorem validateOrder_coupon_le_cart_net
+    {raw : RawOrder} {order : Order}
+    (_h : validateOrder raw = Except.ok order) :
+    order.couponAmount ≤ cartNetTotal order.items := by
+  exact order.coupon_le_cart_net
+
+/-- Successful order validation preserves raw source fields. -/
+theorem validateOrder_matches_raw
+    {raw : RawOrder} {order : Order}
+    (h : validateOrder raw = Except.ok order) :
+    orderMatchesRaw raw order := by
+  unfold validateOrder at h
+  cases hItems : validateCartLines raw.items with
+  | error e =>
+      simp [hItems] at h
+  | ok items =>
+      by_cases hCoupon : raw.couponAmount ≤ cartNetTotal items
+      · by_cases hShipping : shippingAvailable raw.shippingMethod (cartWeightTotal items)
+        · by_cases hTotal :
+            raw.total = orderTotal raw.shippingMethod raw.couponAmount raw.tax items
+          · simp [hItems, hCoupon, hShipping, hTotal] at h
+            cases h
+            exact ⟨rfl, validateCartLines_matches_raw hItems,
+              rfl, rfl, rfl, rfl, rfl, rfl⟩
+          · simp [hItems, hCoupon, hShipping, hTotal] at h
+        · simp [hItems, hCoupon, hShipping] at h
+      · simp [hItems, hCoupon] at h
 
 /-- Raw stock data before the reservation bound has been checked. -/
 structure RawStockState where
@@ -2737,42 +2851,47 @@ def validateRetentionOffer
 
 /--
 Validate and normalize a shipment plan. The selected carrier quote supplies the
-package and destination zone so those object equalities are definitional.
+package, while destination zone identity is checked against independently
+provided destination data.
 -/
 def validateLogisticsShipmentPlan
     (id : ShipmentId) (order : Order) (fulfillment : DistinctFulfillmentPlan)
     (quote : CarrierQuote) (warehouse : Warehouse)
-    (destinationId : Id) (postalCode : Nat)
+    (destination : ShippingDestination)
     (plannedShipAt promisedDeliveryAt : Timestamp) :
     Except ValidationError LogisticsShipmentPlan :=
   if hEligible : orderEligibleForLogistics order then
     if hQuantity : fulfillment.requested = cartQuantityTotal order.items then
       if hSkus : allocationsMatchCartSkus order.items fulfillment.allocations then
-        if hWarehouse : allocationsUseWarehouse warehouse fulfillment.allocations then
-          if hWeight : cartWeightTotal order.items ≤ quote.package.weight then
-            if hPromise : plannedShipAt ≤ promisedDeliveryAt then
-              let destination : ShippingDestination :=
-                { id := destinationId
-                  zone := quote.service.zone
-                  postalCode := postalCode }
-              Except.ok
-                { id := id
-                  order := order
-                  fulfillment := fulfillment
-                  package := quote.package
-                  quote := quote
-                  warehouse := warehouse
-                  destination := destination
-                  plannedShipAt := plannedShipAt
-                  promisedDeliveryAt := promisedDeliveryAt
-                  order_eligible := hEligible
-                  quantity_matches_cart := hQuantity
-                  allocations_match_cart_skus := hSkus
-                  allocations_use_warehouse := hWarehouse
-                  quote_package_matches := rfl
-                  quote_zone_matches_destination := rfl
-                  package_covers_cart_weight := hWeight
-                  planned_le_promised := hPromise }
+        if hSkuQuantities :
+            allocationQuantitiesMatchCartSkus order.items fulfillment.allocations then
+          if hWarehouse : allocationsUseWarehouse warehouse fulfillment.allocations then
+            if hZone : quote.service.zone = destination.zone then
+              if hWeight : cartWeightTotal order.items ≤ quote.package.weight then
+                if hPromise : plannedShipAt ≤ promisedDeliveryAt then
+                  Except.ok
+                    { id := id
+                      order := order
+                      fulfillment := fulfillment
+                      package := quote.package
+                      quote := quote
+                      warehouse := warehouse
+                      destination := destination
+                      plannedShipAt := plannedShipAt
+                      promisedDeliveryAt := promisedDeliveryAt
+                      order_eligible := hEligible
+                      quantity_matches_cart := hQuantity
+                      allocations_match_cart_skus := hSkus
+                      allocation_quantities_match_cart_skus := hSkuQuantities
+                      allocations_use_warehouse := hWarehouse
+                      quote_package_matches := rfl
+                      quote_zone_matches_destination := hZone
+                      package_covers_cart_weight := hWeight
+                      planned_le_promised := hPromise }
+                else
+                  Except.error ValidationError.logisticsInvariantFailed
+              else
+                Except.error ValidationError.logisticsInvariantFailed
             else
               Except.error ValidationError.logisticsInvariantFailed
           else
@@ -2789,18 +2908,34 @@ def validateLogisticsShipmentPlan
 /-- Successful shipment-plan validation proves allocation and carrier capacity safety. -/
 theorem validateLogisticsShipmentPlan_sound
     {id : ShipmentId} {order : Order} {fulfillment : DistinctFulfillmentPlan}
-    {quote : CarrierQuote} {warehouse : Warehouse} {destinationId : Id}
-    {postalCode : Nat} {plannedShipAt promisedDeliveryAt : Timestamp}
+    {quote : CarrierQuote} {warehouse : Warehouse} {destination : ShippingDestination}
+    {plannedShipAt promisedDeliveryAt : Timestamp}
     {plan : LogisticsShipmentPlan}
     (_h :
       validateLogisticsShipmentPlan id order fulfillment quote warehouse
-          destinationId postalCode plannedShipAt promisedDeliveryAt =
+          destination plannedShipAt promisedDeliveryAt =
         Except.ok plan) :
     plan.fulfillment.requested ≤
         allocationsAvailableTotal plan.fulfillment.allocations ∧
       plan.package.weight ≤ plan.quote.service.maxWeight := by
   exact ⟨shipmentPlan_requested_le_availableTotal plan,
     shipmentPlan_package_weight_safe plan⟩
+
+/-- Successful shipment-plan validation proves the stricter SKU and zone checks. -/
+theorem validateLogisticsShipmentPlan_strict_sound
+    {id : ShipmentId} {order : Order} {fulfillment : DistinctFulfillmentPlan}
+    {quote : CarrierQuote} {warehouse : Warehouse} {destination : ShippingDestination}
+    {plannedShipAt promisedDeliveryAt : Timestamp}
+    {plan : LogisticsShipmentPlan}
+    (_h :
+      validateLogisticsShipmentPlan id order fulfillment quote warehouse
+          destination plannedShipAt promisedDeliveryAt =
+        Except.ok plan) :
+    allocationQuantitiesMatchCartSkus plan.order.items plan.fulfillment.allocations ∧
+      plan.quote.service.zone = plan.destination.zone := by
+  exact ⟨
+    shipmentPlan_allocation_quantities_match_cart_skus plan,
+    shipmentPlan_quote_zone_matches_destination plan⟩
 
 /-- Validate concrete shipment identity and timestamp ordering. -/
 def validateLogisticsShipment

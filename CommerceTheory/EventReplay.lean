@@ -190,10 +190,26 @@ inductive ValidDomainEventStep :
 /-- Event-aware projection steps preserve stock and ledger validity. -/
 theorem validDomainEventStep_preserves_validity
     {event : DomainEvent} {before after : ValidSystemState}
-    (_h : ValidDomainEventStep event before after) :
+    (h : ValidDomainEventStep event before after) :
     after.stock.reserved ≤ after.stock.total ∧
       after.ledger.refunded ≤ after.ledger.captured := by
-  exact ⟨after.stock.reserved_le_total, after.ledger.refunded_le_captured⟩
+  cases h with
+  | stockReserved sku quantity hSku hReserve =>
+      exact applyStockReservedEvent_preserves_validity before sku quantity hSku hReserve
+  | refundIssued orderId amount hRefund =>
+      exact applyRefundIssuedEvent_preserves_validity before amount hRefund
+  | reservationReleased sku quantity hSku hReserved =>
+      exact applyReservationReleasedEvent_preserves_validity
+        before sku quantity hSku hReserved
+  | reservedShipmentConfirmed sku quantity hSku hReserved =>
+      exact applyReservedShipmentConfirmedEvent_preserves_validity
+        before sku quantity hSku hReserved
+  | taxLiabilityRecorded id amount =>
+      exact applyTaxLiabilityRecordedEvent_preserves_validity before amount
+  | crmProjected hCRM =>
+      exact applyCRMProjectedEvent_preserves_validity before
+  | logisticsProjected hLogistics =>
+      exact applyLogisticsProjectedEvent_preserves_validity before
 
 /-- Any exact-step valid system replay preserves stock and ledger validity. -/
 theorem validSystemReplayInSteps_preserves_validity

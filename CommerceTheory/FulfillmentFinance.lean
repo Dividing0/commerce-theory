@@ -133,6 +133,7 @@ theorem taxableAmount_le_total (t : TaxCalculation) :
 structure ShippingZone where
   id : Id
   name : String
+deriving DecidableEq, Repr
 
 /-- Data shape for `CarrierService`; proof fields record invariants when needed. -/
 structure CarrierService where

@@ -33,6 +33,7 @@ structure Order where
   currency : Currency
   status : OrderStatus
   total : Money
+  coupon_le_cart_net : couponAmount ≤ cartNetTotal items
   shipping_available : shippingAvailable shippingMethod (cartWeightTotal items)
   total_correct : total = orderTotal shippingMethod couponAmount tax items
 
@@ -50,6 +51,11 @@ theorem order_total_is_safe (order : Order) :
 theorem order_shipping_available (order : Order) :
     cartWeightTotal order.items ≤ order.shippingMethod.maxWeight := by
   exact order.shipping_available
+
+/-- A validated order never applies a coupon larger than its cart net subtotal. -/
+theorem order_coupon_le_cart_net (order : Order) :
+    order.couponAmount ≤ cartNetTotal order.items := by
+  exact order.coupon_le_cart_net
 
 /-- A validated order's stored total is exactly the pricing-module calculation. -/
 theorem order_total_matches_calculation (order : Order) :

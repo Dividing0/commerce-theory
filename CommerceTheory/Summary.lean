@@ -193,6 +193,13 @@ theorem executable_order_validation_pricing_safety
       cartGrossTotal order.items + order.shippingMethod.price + order.tax := by
   exact validateOrder_sound h
 
+/-- Successful executable order validation bounds the coupon by cart net subtotal. -/
+theorem executable_order_validation_coupon_safety
+    {raw : RawOrder} {order : Order}
+    (h : validateOrder raw = Except.ok order) :
+    order.couponAmount ≤ cartNetTotal order.items := by
+  exact validateOrder_coupon_le_cart_net h
+
 /-- Successful executable feed-line validation produces a safe marketplace feed line. -/
 theorem executable_feed_line_validation_safety
     {raw : RawProductFeedLine} {line : SafeProductFeedLine}
@@ -1805,6 +1812,7 @@ theorem logistics_shipment_plan_safety
     orderEligibleForLogistics plan.order ∧
       allocationKeysDistinct plan.fulfillment.allocations ∧
       allocationsMatchCartSkus plan.order.items plan.fulfillment.allocations ∧
+      allocationQuantitiesMatchCartSkus plan.order.items plan.fulfillment.allocations ∧
       allocationsUseWarehouse plan.warehouse plan.fulfillment.allocations ∧
       plan.quote.service.zone = plan.destination.zone ∧
       cartWeightTotal plan.order.items ≤ plan.package.weight ∧
@@ -1812,9 +1820,9 @@ theorem logistics_shipment_plan_safety
       plan.quote.service.baseCost ≤ plan.quote.price ∧
       plan.fulfillment.requested ≤ allocationsAvailableTotal plan.fulfillment.allocations := by
   exact ⟨plan.order_eligible, plan.fulfillment.allocation_keys_distinct,
-    plan.allocations_match_cart_skus, plan.allocations_use_warehouse,
-    plan.quote_zone_matches_destination, plan.package_covers_cart_weight,
-    shipmentPlan_package_weight_safe plan,
+    plan.allocations_match_cart_skus, plan.allocation_quantities_match_cart_skus,
+    plan.allocations_use_warehouse, plan.quote_zone_matches_destination,
+    plan.package_covers_cart_weight, shipmentPlan_package_weight_safe plan,
     shipmentPlan_quote_price_covers_base_cost plan,
     shipmentPlan_requested_le_availableTotal plan⟩
 
