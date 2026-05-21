@@ -1,0 +1,17 @@
+# Local Patches
+
+This vendored copy is based on `ammkrn/timelib` commit
+`2c69e4a597a99d1ce748dea67af430db20ca0ea8`.
+
+The upstream package targets Lean `v4.19.0-rc2`. The local changes keep the API
+the project imports, while making the package compile under Lean `v4.29.1`:
+
+- `Timelib/Date/Year.lean`: replace a removed `Nat.add_right_eq_self` simp
+  reference and update deprecated integer nat-cast naming.
+- `Timelib/Util.lean` and `Timelib/Duration/ESignedDuration.lean`: make
+  `Option`-backed order proofs use definitional reduction instead of an older
+  `simp` shape.
+- `Timelib/DateTime/Parse.lean`: update deprecated integer nat-cast naming.
+- `Timelib/DateTime/Naive.lean`: replace an instance-unfolding `simp` proof
+  with `rfl`.
+- `lean-toolchain`: align the vendored package with the workspace toolchain.

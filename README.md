@@ -14,8 +14,9 @@ opportunity selection, CRM, and logistics.
 - Dependencies:
   - `leanprover-community/mathlib`, pinned to `v4.29.1`
   - `leanprover/cslib`, pinned to `v4.29.0`
-  - `ammkrn/timelib`, pinned in `lakefile.toml` and `lake-manifest.json` to
-    `2c69e4a597a99d1ce748dea67af430db20ca0ea8`
+  - `ammkrn/timelib`, vendored at `vendor/timelib` with a Lean `v4.29.1`
+    compatibility patch for the upstream `2c69e4a597a99d1ce748dea67af430db20ca0ea8`
+    source.
 
 ## Project Layout
 

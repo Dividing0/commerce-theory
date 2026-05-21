@@ -14,8 +14,7 @@ rev = "v4.29.1"
 
 [[require]]
 name = "timelib"
-git = "https://github.com/ammkrn/timelib"
-rev = "2c69e4a597a99d1ce748dea67af430db20ca0ea8"
+path = "vendor/timelib"
 
 [[lean_lib]]
 name = "CommerceTheory"
