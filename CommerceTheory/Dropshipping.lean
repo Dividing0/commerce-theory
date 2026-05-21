@@ -315,6 +315,26 @@ theorem dropshipPO_cancelled_has_no_outgoing (next : DropshipPOStatus) :
     ¬ CanDropshipPOTransition DropshipPOStatus.Cancelled next := by
   cases next <;> simp [CanDropshipPOTransition]
 
+/-- Rejected supplier POs are terminal in the modeled dropship workflow. -/
+theorem dropshipPO_rejected_has_no_outgoing (next : DropshipPOStatus) :
+    ¬ CanDropshipPOTransition DropshipPOStatus.Rejected next := by
+  cases next <;> simp [CanDropshipPOTransition]
+
+/-- Delivered supplier POs are terminal in the modeled dropship workflow. -/
+theorem dropshipPO_delivered_has_no_outgoing (next : DropshipPOStatus) :
+    ¬ CanDropshipPOTransition DropshipPOStatus.Delivered next := by
+  cases next <;> simp [CanDropshipPOTransition]
+
+/-- Cancelled supplier POs cannot transition directly to delivered. -/
+theorem dropshipPO_cancelled_cannot_become_delivered :
+    ¬ CanDropshipPOTransition DropshipPOStatus.Cancelled DropshipPOStatus.Delivered := by
+  exact dropshipPO_cancelled_has_no_outgoing DropshipPOStatus.Delivered
+
+/-- Rejected supplier POs cannot transition directly to delivered. -/
+theorem dropshipPO_rejected_cannot_become_delivered :
+    ¬ CanDropshipPOTransition DropshipPOStatus.Rejected DropshipPOStatus.Delivered := by
+  exact dropshipPO_rejected_has_no_outgoing DropshipPOStatus.Delivered
+
 /-- Computes or checks `dropshipSLASafe` using the validated data in this module. -/
 def dropshipSLASafe (supplier : DropshipSupplier) (quote : DropshipShippingQuote)
     (promisedDays : Days) : Prop :=

@@ -81,6 +81,22 @@ theorem cancelled_has_no_outgoing (next : OrderStatus) :
   intro h
   cases h
 
+/-- Refunded orders are terminal in the modeled order workflow. -/
+theorem refunded_has_no_outgoing (next : OrderStatus) :
+    ¬ CanOrderTransition OrderStatus.Refunded next := by
+  intro h
+  cases h
+
+/-- Cancelled orders cannot transition directly to delivered. -/
+theorem cancelled_cannot_become_delivered :
+    ¬ CanOrderTransition OrderStatus.Cancelled OrderStatus.Delivered := by
+  exact cancelled_has_no_outgoing OrderStatus.Delivered
+
+/-- Refunded orders cannot transition directly back to paid/captured. -/
+theorem refunded_cannot_become_paid :
+    ¬ CanOrderTransition OrderStatus.Refunded OrderStatus.Paid := by
+  exact refunded_has_no_outgoing OrderStatus.Paid
+
 /-- Data shape for `TypedOrder`; proof fields record invariants when needed. -/
 structure TypedOrder (s : OrderStatus) where
   id : OrderId

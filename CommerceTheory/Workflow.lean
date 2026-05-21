@@ -180,6 +180,136 @@ theorem refunded_order_has_no_lts_outgoing
   intro h
   cases label <;> cases next <;> simp [orderStatusLTS] at h
 
+/-- A state with no outgoing labelled transitions can only multistep-reach itself. -/
+theorem terminal_mtr_eq_of_no_outgoing
+    {State : Type} {Label : Type} {lts : Cslib.LTS State Label}
+    {source target : State} {trace : List Label}
+    (hNoOutgoing : ∀ label next, ¬ lts.Tr source label next)
+    (h : lts.MTr source trace target) :
+    target = source := by
+  cases h with
+  | refl => rfl
+  | stepL htr _ =>
+      exact False.elim (hNoOutgoing _ _ htr)
+
+/-- A terminal state cannot reach a different state. -/
+theorem terminal_cannot_reach_ne
+    {State : Type} {Label : Type} {lts : Cslib.LTS State Label}
+    {source target : State}
+    (hNoOutgoing : ∀ label next, ¬ lts.Tr source label next)
+    (hNe : target ≠ source) :
+    ¬ lts.CanReach source target := by
+  intro hReach
+  rcases hReach with ⟨trace, htrace⟩
+  exact hNe (terminal_mtr_eq_of_no_outgoing hNoOutgoing htrace)
+
+/-- Cancelled orders cannot reach delivered in any labelled order trace. -/
+theorem cancelled_order_cannot_reach_delivered :
+    ¬ orderStatusLTS.CanReach OrderStatus.Cancelled OrderStatus.Delivered := by
+  exact terminal_cannot_reach_ne
+    (lts := orderStatusLTS)
+    (source := OrderStatus.Cancelled)
+    (target := OrderStatus.Delivered)
+    (fun label next => cancelled_order_has_no_lts_outgoing label next)
+    (by intro h; cases h)
+
+/-- Cancelled orders cannot be paid after cancellation. -/
+theorem cancelled_order_cannot_reach_paid :
+    ¬ orderStatusLTS.CanReach OrderStatus.Cancelled OrderStatus.Paid := by
+  exact terminal_cannot_reach_ne
+    (lts := orderStatusLTS)
+    (source := OrderStatus.Cancelled)
+    (target := OrderStatus.Paid)
+    (fun label next => cancelled_order_has_no_lts_outgoing label next)
+    (by intro h; cases h)
+
+/-- Cancelled orders cannot later become refunded through the order-status workflow. -/
+theorem cancelled_order_cannot_reach_refunded :
+    ¬ orderStatusLTS.CanReach OrderStatus.Cancelled OrderStatus.Refunded := by
+  exact terminal_cannot_reach_ne
+    (lts := orderStatusLTS)
+    (source := OrderStatus.Cancelled)
+    (target := OrderStatus.Refunded)
+    (fun label next => cancelled_order_has_no_lts_outgoing label next)
+    (by intro h; cases h)
+
+/-- Refunded orders cannot be captured or paid again. -/
+theorem refunded_order_cannot_be_captured_again :
+    ¬ orderStatusLTS.CanReach OrderStatus.Refunded OrderStatus.Paid := by
+  exact terminal_cannot_reach_ne
+    (lts := orderStatusLTS)
+    (source := OrderStatus.Refunded)
+    (target := OrderStatus.Paid)
+    (fun label next => refunded_order_has_no_lts_outgoing label next)
+    (by intro h; cases h)
+
+/-- Refunded orders cannot return to delivered through later workflow steps. -/
+theorem refunded_order_cannot_reach_delivered :
+    ¬ orderStatusLTS.CanReach OrderStatus.Refunded OrderStatus.Delivered := by
+  exact terminal_cannot_reach_ne
+    (lts := orderStatusLTS)
+    (source := OrderStatus.Refunded)
+    (target := OrderStatus.Delivered)
+    (fun label next => refunded_order_has_no_lts_outgoing label next)
+    (by intro h; cases h)
+
+/-- A backordered order cannot reach delivery without receiving backorder payment. -/
+theorem backordered_delivery_trace_requires_payment
+    {trace : List OrderTransitionLabel}
+    (h : orderStatusLTS.MTr OrderStatus.Backordered trace OrderStatus.Delivered) :
+    OrderTransitionLabel.ReceiveBackorderPayment ∈ trace := by
+  cases h
+  case stepL label next rest htr hrest =>
+    cases label <;> cases next <;> simp [orderStatusLTS] at htr
+    · simp
+    · have hSame :
+          OrderStatus.Delivered = OrderStatus.Cancelled :=
+        terminal_mtr_eq_of_no_outgoing
+          (lts := orderStatusLTS)
+          (source := OrderStatus.Cancelled)
+          (target := OrderStatus.Delivered)
+          (fun label next => cancelled_order_has_no_lts_outgoing label next)
+          hrest
+      cases hSame
+
+/--
+Any order trace from new to delivered contains either immediate payment capture
+or the later payment event that releases a backorder.
+-/
+theorem order_delivery_trace_requires_payment
+    {trace : List OrderTransitionLabel}
+    (h : orderStatusLTS.MTr OrderStatus.New trace OrderStatus.Delivered) :
+    OrderTransitionLabel.CapturePayment ∈ trace ∨
+      OrderTransitionLabel.ReceiveBackorderPayment ∈ trace := by
+  cases h
+  case stepL label next rest htr hrest =>
+    cases label <;> cases next <;> simp [orderStatusLTS] at htr
+    · left
+      simp
+    · have hSame :
+          OrderStatus.Delivered = OrderStatus.Cancelled :=
+        terminal_mtr_eq_of_no_outgoing
+          (lts := orderStatusLTS)
+          (source := OrderStatus.Cancelled)
+          (target := OrderStatus.Delivered)
+          (fun label next => cancelled_order_has_no_lts_outgoing label next)
+          hrest
+      cases hSame
+    · right
+      have hPayment := backordered_delivery_trace_requires_payment hrest
+      simpa using hPayment
+
+/-- A new order cannot be delivered along a trace that contains no payment step. -/
+theorem delivered_without_paid_is_unreachable
+    {trace : List OrderTransitionLabel}
+    (hNoCapture : OrderTransitionLabel.CapturePayment ∉ trace)
+    (hNoBackorderPayment : OrderTransitionLabel.ReceiveBackorderPayment ∉ trace) :
+    ¬ orderStatusLTS.MTr OrderStatus.New trace OrderStatus.Delivered := by
+  intro h
+  cases order_delivery_trace_requires_payment h with
+  | inl hCapture => exact hNoCapture hCapture
+  | inr hBackorderPayment => exact hNoBackorderPayment hBackorderPayment
+
 /--
 Cancelled and refunded orders expose the same future traces: only the empty trace.
 This is a CSLib trace-equivalence statement over the order-status LTS.
@@ -322,6 +452,103 @@ theorem dropshipPO_rejected_has_no_lts_outgoing
     ¬ dropshipPOLTS.Tr DropshipPOStatus.Rejected label next := by
   intro h
   cases label <;> cases next <;> simp [dropshipPOLTS] at h
+
+/-- Delivered supplier POs have no outgoing labelled transition. -/
+theorem dropshipPO_delivered_has_no_lts_outgoing
+    (label : DropshipPOTransitionLabel) (next : DropshipPOStatus) :
+    ¬ dropshipPOLTS.Tr DropshipPOStatus.Delivered label next := by
+  intro h
+  cases label <;> cases next <;> simp [dropshipPOLTS] at h
+
+/-- Cancelled supplier POs cannot reach delivered in any labelled PO trace. -/
+theorem dropshipPO_cancelled_cannot_reach_delivered :
+    ¬ dropshipPOLTS.CanReach DropshipPOStatus.Cancelled DropshipPOStatus.Delivered := by
+  exact terminal_cannot_reach_ne
+    (lts := dropshipPOLTS)
+    (source := DropshipPOStatus.Cancelled)
+    (target := DropshipPOStatus.Delivered)
+    (fun label next => dropshipPO_cancelled_has_no_lts_outgoing label next)
+    (by intro h; cases h)
+
+/-- Rejected supplier POs cannot reach delivered in any labelled PO trace. -/
+theorem dropshipPO_rejected_cannot_reach_delivered :
+    ¬ dropshipPOLTS.CanReach DropshipPOStatus.Rejected DropshipPOStatus.Delivered := by
+  exact terminal_cannot_reach_ne
+    (lts := dropshipPOLTS)
+    (source := DropshipPOStatus.Rejected)
+    (target := DropshipPOStatus.Delivered)
+    (fun label next => dropshipPO_rejected_has_no_lts_outgoing label next)
+    (by intro h; cases h)
+
+/-- Delivered supplier POs cannot later become cancelled. -/
+theorem dropshipPO_delivered_cannot_reach_cancelled :
+    ¬ dropshipPOLTS.CanReach DropshipPOStatus.Delivered DropshipPOStatus.Cancelled := by
+  exact terminal_cannot_reach_ne
+    (lts := dropshipPOLTS)
+    (source := DropshipPOStatus.Delivered)
+    (target := DropshipPOStatus.Cancelled)
+    (fun label next => dropshipPO_delivered_has_no_lts_outgoing label next)
+    (by intro h; cases h)
+
+/-- A submitted supplier PO cannot reach delivery without supplier acceptance. -/
+theorem dropshipPO_submitted_delivery_trace_requires_acceptance
+    {trace : List DropshipPOTransitionLabel}
+    (h : dropshipPOLTS.MTr
+      DropshipPOStatus.Submitted trace DropshipPOStatus.Delivered) :
+    DropshipPOTransitionLabel.Accept ∈ trace := by
+  cases h
+  case stepL label next rest htr hrest =>
+    cases label <;> cases next <;> simp [dropshipPOLTS] at htr
+    · simp
+    · have hSame :
+          DropshipPOStatus.Delivered = DropshipPOStatus.Rejected :=
+        terminal_mtr_eq_of_no_outgoing
+          (lts := dropshipPOLTS)
+          (source := DropshipPOStatus.Rejected)
+          (target := DropshipPOStatus.Delivered)
+          (fun label next => dropshipPO_rejected_has_no_lts_outgoing label next)
+          hrest
+      cases hSame
+    · have hSame :
+          DropshipPOStatus.Delivered = DropshipPOStatus.Cancelled :=
+        terminal_mtr_eq_of_no_outgoing
+          (lts := dropshipPOLTS)
+          (source := DropshipPOStatus.Cancelled)
+          (target := DropshipPOStatus.Delivered)
+          (fun label next => dropshipPO_cancelled_has_no_lts_outgoing label next)
+          hrest
+      cases hSame
+
+/-- A created supplier PO cannot reach delivery without supplier acceptance. -/
+theorem dropshipPO_delivery_trace_requires_acceptance
+    {trace : List DropshipPOTransitionLabel}
+    (h : dropshipPOLTS.MTr
+      DropshipPOStatus.Created trace DropshipPOStatus.Delivered) :
+    DropshipPOTransitionLabel.Accept ∈ trace := by
+  cases h
+  case stepL label next rest htr hrest =>
+    cases label <;> cases next <;> simp [dropshipPOLTS] at htr
+    · have hAccept :=
+        dropshipPO_submitted_delivery_trace_requires_acceptance hrest
+      simpa using hAccept
+    · have hSame :
+          DropshipPOStatus.Delivered = DropshipPOStatus.Cancelled :=
+        terminal_mtr_eq_of_no_outgoing
+          (lts := dropshipPOLTS)
+          (source := DropshipPOStatus.Cancelled)
+          (target := DropshipPOStatus.Delivered)
+          (fun label next => dropshipPO_cancelled_has_no_lts_outgoing label next)
+          hrest
+      cases hSame
+
+/-- A supplier PO cannot be delivered along a trace with no acceptance step. -/
+theorem dropshipPO_delivery_without_acceptance_is_unreachable
+    {trace : List DropshipPOTransitionLabel}
+    (hNoAccept : DropshipPOTransitionLabel.Accept ∉ trace) :
+    ¬ dropshipPOLTS.MTr
+      DropshipPOStatus.Created trace DropshipPOStatus.Delivered := by
+  intro h
+  exact hNoAccept (dropshipPO_delivery_trace_requires_acceptance h)
 
 /-- Cancelled and rejected supplier PO states expose the same future traces. -/
 theorem dropshipPO_cancelled_trace_equivalent_rejected :

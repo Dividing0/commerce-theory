@@ -843,10 +843,168 @@ theorem order_terminal_outcomes_trace_equivalent :
     Cslib.LTS.HomTraceEq orderStatusLTS OrderStatus.Cancelled OrderStatus.Refunded := by
   exact cancelled_trace_equivalent_refunded
 
+/-- Cancelled orders cannot transition to any later order state. -/
+theorem cancelled_order_cannot_transition (next : OrderStatus) :
+    ¬ CanOrderTransition OrderStatus.Cancelled next := by
+  exact cancelled_has_no_outgoing next
+
+/-- Refunded orders cannot transition to any later order state. -/
+theorem refunded_order_cannot_transition (next : OrderStatus) :
+    ¬ CanOrderTransition OrderStatus.Refunded next := by
+  exact refunded_has_no_outgoing next
+
+/-- Cancelled orders cannot transition directly to delivered. -/
+theorem order_cancelled_cannot_transition_to_delivered :
+    ¬ CanOrderTransition OrderStatus.Cancelled OrderStatus.Delivered := by
+  exact cancelled_cannot_become_delivered
+
+/-- Refunded orders cannot transition directly back to paid/captured. -/
+theorem order_refunded_cannot_transition_to_paid :
+    ¬ CanOrderTransition OrderStatus.Refunded OrderStatus.Paid := by
+  exact refunded_cannot_become_paid
+
+/-- Cancelled orders cannot reach delivered through any later workflow trace. -/
+theorem order_cancelled_cannot_reach_delivered :
+    ¬ orderStatusLTS.CanReach OrderStatus.Cancelled OrderStatus.Delivered := by
+  exact cancelled_order_cannot_reach_delivered
+
+/-- Cancelled orders cannot reach paid through any later workflow trace. -/
+theorem order_cancelled_cannot_reach_paid :
+    ¬ orderStatusLTS.CanReach OrderStatus.Cancelled OrderStatus.Paid := by
+  exact cancelled_order_cannot_reach_paid
+
+/-- Cancelled orders cannot reach refunded through any later workflow trace. -/
+theorem order_cancelled_cannot_reach_refunded :
+    ¬ orderStatusLTS.CanReach OrderStatus.Cancelled OrderStatus.Refunded := by
+  exact cancelled_order_cannot_reach_refunded
+
+/-- Refunded orders cannot be captured or paid again through any workflow trace. -/
+theorem order_refunded_cannot_be_captured_again :
+    ¬ orderStatusLTS.CanReach OrderStatus.Refunded OrderStatus.Paid := by
+  exact refunded_order_cannot_be_captured_again
+
+/-- Refunded orders cannot reach delivered through any later workflow trace. -/
+theorem order_refunded_cannot_reach_delivered :
+    ¬ orderStatusLTS.CanReach OrderStatus.Refunded OrderStatus.Delivered := by
+  exact refunded_order_cannot_reach_delivered
+
+/-- Delivered order traces from `New` must include a payment step. -/
+theorem order_delivered_without_payment_unreachable
+    {trace : List OrderTransitionLabel}
+    (hNoCapture : OrderTransitionLabel.CapturePayment ∉ trace)
+    (hNoBackorderPayment : OrderTransitionLabel.ReceiveBackorderPayment ∉ trace) :
+    ¬ orderStatusLTS.MTr OrderStatus.New trace OrderStatus.Delivered := by
+  exact delivered_without_paid_is_unreachable hNoCapture hNoBackorderPayment
+
 /-- CSLib reachability for the normal dropship supplier purchase-order workflow. -/
 theorem dropship_po_workflow_reaches_delivered :
     dropshipPOLTS.CanReach DropshipPOStatus.Created DropshipPOStatus.Delivered := by
   exact dropshipPO_can_reach_delivered
+
+/-- Cancelled supplier POs cannot transition to any later PO state. -/
+theorem dropship_po_cancelled_cannot_transition (next : DropshipPOStatus) :
+    ¬ CanDropshipPOTransition DropshipPOStatus.Cancelled next := by
+  exact dropshipPO_cancelled_has_no_outgoing next
+
+/-- Rejected supplier POs cannot transition to any later PO state. -/
+theorem dropship_po_rejected_cannot_transition (next : DropshipPOStatus) :
+    ¬ CanDropshipPOTransition DropshipPOStatus.Rejected next := by
+  exact dropshipPO_rejected_has_no_outgoing next
+
+/-- Delivered supplier POs cannot transition to any later PO state. -/
+theorem dropship_po_delivered_cannot_transition (next : DropshipPOStatus) :
+    ¬ CanDropshipPOTransition DropshipPOStatus.Delivered next := by
+  exact dropshipPO_delivered_has_no_outgoing next
+
+/-- Cancelled supplier POs cannot transition directly to delivered. -/
+theorem dropship_po_cancelled_cannot_transition_to_delivered :
+    ¬ CanDropshipPOTransition DropshipPOStatus.Cancelled DropshipPOStatus.Delivered := by
+  exact dropshipPO_cancelled_cannot_become_delivered
+
+/-- Rejected supplier POs cannot transition directly to delivered. -/
+theorem dropship_po_rejected_cannot_transition_to_delivered :
+    ¬ CanDropshipPOTransition DropshipPOStatus.Rejected DropshipPOStatus.Delivered := by
+  exact dropshipPO_rejected_cannot_become_delivered
+
+/-- Cancelled supplier POs cannot reach delivered through any later PO trace. -/
+theorem dropship_po_cancelled_cannot_reach_delivered :
+    ¬ dropshipPOLTS.CanReach DropshipPOStatus.Cancelled DropshipPOStatus.Delivered := by
+  exact dropshipPO_cancelled_cannot_reach_delivered
+
+/-- Rejected supplier POs cannot reach delivered through any later PO trace. -/
+theorem dropship_po_rejected_cannot_reach_delivered :
+    ¬ dropshipPOLTS.CanReach DropshipPOStatus.Rejected DropshipPOStatus.Delivered := by
+  exact dropshipPO_rejected_cannot_reach_delivered
+
+/-- Delivered supplier POs cannot later become cancelled. -/
+theorem dropship_po_delivered_cannot_reach_cancelled :
+    ¬ dropshipPOLTS.CanReach DropshipPOStatus.Delivered DropshipPOStatus.Cancelled := by
+  exact dropshipPO_delivered_cannot_reach_cancelled
+
+/-- Delivered supplier PO traces from `Created` must include supplier acceptance. -/
+theorem dropship_po_delivery_without_acceptance_unreachable
+    {trace : List DropshipPOTransitionLabel}
+    (hNoAccept : DropshipPOTransitionLabel.Accept ∉ trace) :
+    ¬ dropshipPOLTS.MTr
+      DropshipPOStatus.Created trace DropshipPOStatus.Delivered := by
+  exact dropshipPO_delivery_without_acceptance_is_unreachable hNoAccept
+
+/-- Closed CRM accounts cannot transition to any later account state. -/
+theorem closed_crm_account_cannot_transition (next : CRMAccountStatus) :
+    ¬ CanCRMAccountTransition CRMAccountStatus.Closed next := by
+  exact closedCRMAccount_has_no_outgoing next
+
+/-- Converted leads cannot transition to any later lead state. -/
+theorem converted_lead_cannot_transition (next : LeadStatus) :
+    ¬ CanLeadTransition LeadStatus.Converted next := by
+  exact convertedLead_has_no_outgoing next
+
+/-- Disqualified leads cannot transition to any later lead state. -/
+theorem disqualified_lead_cannot_transition (next : LeadStatus) :
+    ¬ CanLeadTransition LeadStatus.Disqualified next := by
+  exact disqualifiedLead_has_no_outgoing next
+
+/-- Won opportunities cannot transition to any later opportunity stage. -/
+theorem won_opportunity_cannot_transition (next : OpportunityStage) :
+    ¬ CanOpportunityTransition OpportunityStage.Won next := by
+  exact wonOpportunity_has_no_outgoing next
+
+/-- Lost opportunities cannot transition to any later opportunity stage. -/
+theorem lost_opportunity_cannot_transition (next : OpportunityStage) :
+    ¬ CanOpportunityTransition OpportunityStage.Lost next := by
+  exact lostOpportunity_has_no_outgoing next
+
+/-- Closed support cases cannot transition to any later support status. -/
+theorem closed_support_case_cannot_transition (next : SupportCaseStatus) :
+    ¬ CanSupportCaseTransition SupportCaseStatus.Closed next := by
+  exact closedSupportCase_has_no_outgoing next
+
+/-- Delivered shipments cannot transition to any later shipment status. -/
+theorem delivered_shipment_cannot_transition (next : ShipmentStatus) :
+    ¬ CanShipmentTransition ShipmentStatus.Delivered next := by
+  exact deliveredShipmentStatus_has_no_outgoing next
+
+/-- Cancelled shipments cannot transition to any later shipment status. -/
+theorem cancelled_shipment_cannot_transition (next : ShipmentStatus) :
+    ¬ CanShipmentTransition ShipmentStatus.Cancelled next := by
+  exact cancelledShipmentStatus_has_no_outgoing next
+
+/-- Returned shipments cannot transition to any later shipment status. -/
+theorem returned_shipment_cannot_transition (next : ShipmentStatus) :
+    ¬ CanShipmentTransition ShipmentStatus.Returned next := by
+  exact returnedShipmentStatus_has_no_outgoing next
+
+/-- Rejected return authorizations cannot transition to any later return status. -/
+theorem rejected_return_authorization_cannot_transition
+    (next : ReturnAuthorizationStatus) :
+    ¬ CanReturnAuthorizationTransition ReturnAuthorizationStatus.Rejected next := by
+  exact rejectedReturnAuthorization_has_no_outgoing next
+
+/-- Closed return authorizations cannot transition to any later return status. -/
+theorem closed_return_authorization_cannot_transition
+    (next : ReturnAuthorizationStatus) :
+    ¬ CanReturnAuthorizationTransition ReturnAuthorizationStatus.Closed next := by
+  exact closedReturnAuthorization_has_no_outgoing next
 
 /-- Ordered webhook streams induce a CSLib replay with one accepted step per envelope. -/
 theorem ordered_webhook_replay_has_step_count
