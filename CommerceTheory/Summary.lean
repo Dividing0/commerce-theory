@@ -82,6 +82,102 @@ theorem fulfillment_plan_available_stock_safety (p : FulfillmentPlan) :
     p.requested ≤ allocationsAvailableTotal p.allocations := by
   exact fulfillmentPlan_requested_le_availableTotal p
 
+/-! ### Inventory concurrency and fulfillment realism theorems -/
+
+/-- Compare-and-swap reservations either fail or advance versioned stock safely. -/
+theorem inventory_compare_and_swap_reservation_safety
+    (stock : VersionedStock) (quantity expectedVersion : Nat)
+    (next : VersionedStock)
+    (hSuccess : compareAndSwapReserve? stock quantity expectedVersion = some next) :
+    next.version = stock.version + 1 ∧ next.reserved ≤ next.total := by
+  exact ⟨compareAndSwapReserve?_success_increases_version
+      stock quantity expectedVersion next hSuccess,
+    compareAndSwapReserve?_success_preserves_safety
+      stock quantity expectedVersion next hSuccess⟩
+
+/-- Stale expected versions are rejected before reservation state changes. -/
+theorem inventory_compare_and_swap_stale_rejected
+    (stock : VersionedStock) (quantity expectedVersion : Nat)
+    (hStale : expectedVersion ≠ stock.version) :
+    compareAndSwapReserve? stock quantity expectedVersion = none := by
+  exact compareAndSwapReserve?_stale_fails stock quantity expectedVersion hStale
+
+/-- Concurrent reservation conflicts make the second observed version stale after success. -/
+theorem concurrent_reservation_conflict_safety
+    (conflict : ConcurrentReservationConflict)
+    (hFirstVersion : conflict.first.expectedVersion = conflict.first.stock.version)
+    (hFirstQty : canReserve conflict.first.stock.toStockState conflict.first.quantity) :
+    conflict.first.stock.sku = conflict.second.stock.sku ∧
+      conflict.first.expectedVersion = conflict.second.expectedVersion ∧
+      conflict.second.expectedVersion ≠
+        (reserveVersionedStock
+          conflict.first.stock
+          conflict.first.quantity
+          conflict.first.expectedVersion
+          hFirstVersion
+          hFirstQty).version := by
+  exact ⟨concurrentReservationConflict_same_sku conflict,
+    concurrentReservationConflict_same_expected_version conflict,
+    concurrentReservationConflict_second_version_stale_after_first
+      conflict hFirstVersion hFirstQty⟩
+
+/-- Expired reservations cannot be active and can be released without breaking stock safety. -/
+theorem expired_reservation_release_safety
+    (reservation : TimedReservation) (now : Timestamp)
+    (hExpired : reservationExpiredAt now reservation) :
+    ¬ reservationActiveAt now reservation ∧
+      (releaseExpiredReservation reservation now hExpired).reserved ≤
+        (releaseExpiredReservation reservation now hExpired).total := by
+  exact ⟨expiredReservation_not_activeAt reservation now hExpired,
+    releaseExpiredReservation_preserves_safety reservation now hExpired⟩
+
+/-- Confirming held stock ships it without decrementing available stock a second time. -/
+theorem confirmed_reserved_shipment_inventory_safety
+    (stock : StockState) (quantity : Quantity)
+    (hReserved : quantity ≤ stock.reserved) :
+    (confirmReservedShipment stock quantity hReserved).reserved ≤
+        (confirmReservedShipment stock quantity hReserved).total ∧
+      availableStock (confirmReservedShipment stock quantity hReserved) =
+        availableStock stock := by
+  exact ⟨confirmReservedShipment_preserves_safety stock quantity hReserved,
+    confirmReservedShipment_available_eq stock quantity hReserved⟩
+
+/-- Backorder and preorder records conserve request quantities and capacity. -/
+theorem backorder_preorder_inventory_safety
+    (backorder : BackorderRequest) (preorder : PreorderReservation) :
+    backorder.availableNow + backorder.backordered = backorder.requested ∧
+      backorder.backordered ≤ backorder.requested ∧
+      preorder.quantity ≤ preorder.window.capacity ∧
+      preorder.window.opensAt ≤ preorder.reservedAt ∧
+      preorder.reservedAt ≤ preorder.window.closesAt := by
+  exact ⟨backorderRequest_conserves_quantity backorder,
+    backorderRequest_backordered_le_requested backorder,
+    preorderReservation_quantity_le_capacity preorder,
+    (preorderReservation_in_window preorder).left,
+    (preorderReservation_in_window preorder).right⟩
+
+/-- Serialized, lot, and substitution inventory proofs compose for sellable stock. -/
+theorem serialized_lot_substitution_inventory_safety
+    (serialized : SerializedInventorySet) (lot : InventoryLot)
+    (rule : SkuSubstitution) (now : Timestamp)
+    (hExpired : lot.expiresAt < now) :
+    serialNumbersDistinct serialized.units ∧
+      ¬ lotUsableAt now lot ∧
+      rule.maxSubstituteQty ≤ availableStock rule.substituteStock := by
+  exact ⟨serializedInventorySet_serials_distinct serialized,
+    expiredLot_not_usableAt lot now hExpired,
+    skuSubstitution_max_qty_le_available rule⟩
+
+/-- Split fulfillment keeps aggregate stock safety and proves two warehouses are involved. -/
+theorem split_fulfillment_inventory_safety
+    (plan : SplitFulfillmentPlan) :
+    plan.plan.requested ≤ allocationsAvailableTotal plan.plan.allocations ∧
+      allocationKeysDistinct plan.plan.allocations ∧
+      plan.firstWarehouse.id ≠ plan.secondWarehouse.id := by
+  exact ⟨splitFulfillmentPlan_requested_le_availableTotal plan,
+    splitFulfillmentPlan_allocation_keys_distinct plan,
+    splitFulfillmentPlan_warehouses_distinct plan⟩
+
 /-- Safe marketplace feed lines publish prices inside their channel price policy. -/
 theorem marketplace_feed_price_policy_safety (f : SafeProductFeedLine) :
     f.pricePolicy.minPrice ≤ f.price ∧ f.price ≤ f.pricePolicy.maxPrice := by
