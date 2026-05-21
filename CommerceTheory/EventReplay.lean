@@ -193,11 +193,24 @@ theorem validDomainEventStep_preserves_validity
     (h : ValidDomainEventStep event before after) :
     after.stock.reserved ≤ after.stock.total ∧
       after.ledger.refunded ≤ after.ledger.captured := by
-  cases h <;>
-    simp [applyStockReservedEvent, applyRefundIssuedEvent,
-      applyReservationReleasedEvent, applyReservedShipmentConfirmedEvent,
-      applyTaxLiabilityRecordedEvent, applyCRMProjectedEvent,
-      applyLogisticsProjectedEvent]
+  cases h with
+  | stockReserved sku quantity hSku hReserve =>
+      exact applyStockReservedEvent_preserves_validity
+        before sku quantity hSku hReserve
+  | refundIssued _orderId amount hRefund =>
+      exact applyRefundIssuedEvent_preserves_validity before amount hRefund
+  | reservationReleased sku quantity hSku hReserved =>
+      exact applyReservationReleasedEvent_preserves_validity
+        before sku quantity hSku hReserved
+  | reservedShipmentConfirmed sku quantity hSku hReserved =>
+      exact applyReservedShipmentConfirmedEvent_preserves_validity
+        before sku quantity hSku hReserved
+  | taxLiabilityRecorded _id amount =>
+      exact applyTaxLiabilityRecordedEvent_preserves_validity before amount
+  | crmProjected _hCRM =>
+      exact applyCRMProjectedEvent_preserves_validity before
+  | logisticsProjected _hLogistics =>
+      exact applyLogisticsProjectedEvent_preserves_validity before
 
 /-- Any exact-step valid system replay preserves stock and ledger validity. -/
 theorem validSystemReplayInSteps_preserves_validity
