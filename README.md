@@ -5,7 +5,7 @@ Lean 4 / Mathlib specification for an e-commerce and marketplace domain.
 The project models business invariants for catalog data, inventory, pricing,
 orders, payments, accounting, marketplaces, marketing, B2B, dropshipping,
 competitor pricing, risk, privacy, event sourcing, post-purchase flows, and
-opportunity selection.
+opportunity selection, CRM, and logistics.
 
 ## Toolchain
 
@@ -58,11 +58,18 @@ opportunity selection.
   cursors, sellable catalog entries, publishable feed lines, experiment traffic,
   sourceable distributor products, accounting projections, wholesale checkout
   authorization, fresh competitor benchmarks, currency conversion, gift-card
-  expiry, chargebacks, replenishment forecasts, and orderable supplier quality.
+  expiry, chargebacks, replenishment forecasts, orderable supplier quality, and
+  CRM/logistics joins.
 - `CommerceTheory/PostPurchase.lean`: subscriptions, gift cards, chargebacks, and
   cashflow plans.
+- `CommerceTheory/CRM.lean`: accounts, validated account/contact links, lead and
+  opportunity lifecycles, currency-consistent pipelines, consent-scoped
+  permitted messaging, segmentation, support cases, and retention offers.
 - `CommerceTheory/Forecasting.lean`: forecast confidence, replenishment gates,
   supplier quality metrics, and supplier risk policy.
+- `CommerceTheory/Logistics.lean`: eligible-order shipment plans, carrier
+  handoff, tracking history with delivery scans, delivery promises, exceptions,
+  warehouse transfers, and order-bound return authorizations.
 - `CommerceTheory/InventoryAlgorithms.lean`: CSLib `TimeM` inventory allocation
   algorithms with explicit operation counts.
 - `CommerceTheory/KeyedTotals.lean`: CSLib finite-support keyed allocation totals.
@@ -89,6 +96,8 @@ Import a focused module:
 ```lean
 import CommerceTheory.Pricing
 import CommerceTheory.Orders
+import CommerceTheory.CRM
+import CommerceTheory.Logistics
 ```
 
 All domain declarations live in the `CommerceTheory` namespace.
@@ -132,7 +141,9 @@ validated structures. Theorems then expose the reusable guarantees, such as:
 - reserved inventory never exceeds total inventory;
 - refunds never exceed captured payments;
 - marketplace payouts never exceed gross marketplace revenue;
-- dropship offers preserve their stated minimum profit.
+- dropship offers preserve their stated minimum profit;
+- CRM outreach, support, retention, shipment, transfer, and return flows expose
+  their permission, SLA, capacity, stock, and refund bounds.
 
 ## CSLib Integration
 

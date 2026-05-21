@@ -329,5 +329,136 @@ theorem opportunity_ranking_preserves_rank_keys
     List.Perm (rankOpportunityKeys candidates).ret (opportunityRankKeys candidates) := by
   exact rankOpportunityKeys_perm candidates
 
+/-- CRM pipeline weighted value is bounded by gross opportunity value. -/
+theorem crm_pipeline_weighted_value_safety
+    (opportunities : List SalesOpportunity) :
+    opportunityWeightedValueTotal opportunities ≤ opportunityGrossValue opportunities := by
+  exact opportunityWeightedValueTotal_le_grossValue opportunities
+
+/-- Permitted CRM customer messages carry all outreach permission gates. -/
+theorem crm_contact_permission_safety
+    (message : PermittedCustomerMessage) :
+    canSendMarketingMessage message.contact.subscription ∧
+      canRetarget message.contact.retargetingConsent ∧
+      dataProcessingAllowed message.contact.dataPermission ∧
+      message.contact.dataPermission.purpose = ConsentPurpose.Marketing ∧
+      message.contact.dataPermission.basis = ProcessingBasis.Consent := by
+  exact message.permitted
+
+/-- Resolved CRM support cases prove status, timing, and SLA safety. -/
+theorem crm_support_case_sla_safety
+    (case_ : ResolvedSupportCase) :
+    case_.case_.status = SupportCaseStatus.Resolved ∧
+      case_.case_.openedAt ≤ case_.resolvedAt ∧
+      case_.resolvedAt ≤ case_.case_.slaDueAt := by
+  exact ⟨case_.status_resolved, case_.opened_le_resolved, case_.resolved_by_sla⟩
+
+/-- CRM retention offers stay inside account value and segment caps. -/
+theorem crm_retention_offer_value_safety
+    (offer : RetentionOffer) :
+    offer.discount ≤ offer.account.lifetimeValue ∧
+      offer.discount ≤ offer.segment.maxRetentionDiscount ∧
+      offer.segment.minLifetimeValue ≤ offer.account.lifetimeValue := by
+  exact ⟨retentionOffer_discount_le_lifetimeValue offer,
+    retentionOffer_discount_le_segment_cap offer,
+    retentionOffer_account_meets_segment_value_floor offer⟩
+
+/-- Currency-consistent CRM pipelines keep weighted value below gross value. -/
+theorem crm_sales_pipeline_safety
+    (pipeline : SalesPipeline) :
+    opportunitiesUseCurrency pipeline.currency pipeline.opportunities ∧
+      opportunityWeightedValueTotal pipeline.opportunities ≤
+        opportunityGrossValue pipeline.opportunities := by
+  exact ⟨pipeline.currency_consistent,
+    salesPipeline_weightedValue_le_grossValue pipeline⟩
+
+/-- Converted CRM leads keep source linkage and opportunity amount bounds. -/
+theorem crm_converted_lead_opportunity_safety
+    (conversion : ConvertedLeadOpportunity) :
+    conversion.lead.status = LeadStatus.Converted ∧
+      conversion.opportunity.sourceLead = some conversion.lead.id ∧
+      conversion.opportunity.amount ≤ conversion.lead.estimatedValue := by
+  exact ⟨conversion.lead_converted, conversion.opportunity_source_matches,
+    conversion.opportunity_amount_le_estimate⟩
+
+/-- Logistics shipment plans prove carrier capacity, quote price, and allocation safety. -/
+theorem logistics_shipment_plan_safety
+    (plan : LogisticsShipmentPlan) :
+    orderEligibleForLogistics plan.order ∧
+      cartWeightTotal plan.order.items ≤ plan.package.weight ∧
+      plan.package.weight ≤ plan.quote.service.maxWeight ∧
+      plan.quote.service.baseCost ≤ plan.quote.price ∧
+      plan.fulfillment.requested ≤ allocationsAvailableTotal plan.fulfillment.allocations := by
+  exact ⟨plan.order_eligible, plan.package_covers_cart_weight,
+    shipmentPlan_package_weight_safe plan,
+    shipmentPlan_quote_price_covers_base_cost plan,
+    shipmentPlan_requested_le_availableTotal plan⟩
+
+/-- Delivered logistics shipments meet the promised window and include a delivery scan. -/
+theorem logistics_delivery_promise_safety
+    (shipment : DeliveredShipment) :
+    shipment.promise.plan.plannedShipAt ≤ shipment.deliveredAt ∧
+      shipment.deliveredAt ≤ shipment.promise.plan.promisedDeliveryAt ∧
+      shipment.deliveryEvent.kind = TrackingEventKind.DeliveredScan ∧
+      shipment.deliveryEvent ∈ shipment.history.events := by
+  exact ⟨shipment.shipped_le_delivered,
+    deliveredShipment_deliveredAt_le_plan_promised shipment,
+    shipment.delivery_event_kind, shipment.delivery_event_in_history⟩
+
+/-- Warehouse transfers stay inside source availability and in-transit quantities. -/
+theorem logistics_transfer_stock_safety
+    (transfer : WarehouseTransfer) :
+    transfer.requested ≤ availableStock transfer.sourceStock ∧
+      transfer.received ≤ transfer.inTransit ∧
+      transfer.received ≤ transfer.requested ∧
+      transfer.fromWarehouse.id ≠ transfer.toWarehouse.id := by
+  exact ⟨transfer.requested_le_available, transfer.received_le_inTransit,
+    warehouseTransfer_received_le_requested transfer,
+    transfer.warehouses_distinct⟩
+
+/-- Return authorizations stay inside order quantity and refundable ledger amount. -/
+theorem logistics_return_authorization_safety
+    (authorization : ReturnAuthorization) :
+    authorization.quantity ≤ cartQuantityTotal authorization.order.items ∧
+      authorization.refundAmount ≤ remainingRefundAmount authorization.ledger ∧
+      authorization.refundAmount ≤ authorization.order.total := by
+  exact ⟨authorization.quantity_le_order_quantity,
+    returnAuthorization_refund_le_remaining authorization,
+    returnAuthorization_refund_le_order_total authorization⟩
+
+/-- Shipments tied to CRM orders preserve order identity and shipment capacity safety. -/
+theorem shipment_for_crm_order_safety
+    (shipment : ShipmentForCRMOrder) :
+    shipment.crmOrder.account.status = CRMAccountStatus.Active ∧
+      shipment.plan.order.id = shipment.crmOrder.order.id ∧
+      shipment.plan.package.weight ≤ shipment.plan.quote.service.maxWeight := by
+  exact ⟨crmOrderContact_account_active shipment.crmOrder,
+    shipmentForCRMOrder_order_id_matches shipment,
+    shipmentForCRMOrder_package_weight_safe shipment⟩
+
+/-- Logistics exceptions escalated to CRM support preserve shipment and order linkage. -/
+theorem logistics_exception_escalation_safety
+    (escalation : LogisticsExceptionSupportCase) :
+    escalation.exception.shipmentId = escalation.shipment.id ∧
+      escalation.supportCase.orderId = some escalation.shipment.order.id ∧
+      escalation.supportCase.status = SupportCaseStatus.Escalated ∧
+      escalation.exception.raisedAt ≤ escalation.supportCase.openedAt := by
+  exact ⟨escalation.exception_shipment_matches,
+    escalation.support_case_order_matches,
+    escalation.support_case_escalated,
+    escalation.exception_raised_before_case_opened⟩
+
+/-- CRM-approved return handling stays within both refund and received-quantity bounds. -/
+theorem crm_approved_return_handling_safety
+    (handling : CRMApprovedReturnHandling) :
+    handling.authorization.status = ReturnAuthorizationStatus.Approved ∧
+      handling.receipt.refundIssued ≤ remainingRefundAmount handling.authorization.ledger ∧
+      handling.receipt.refundIssued ≤ handling.authorization.order.total ∧
+      handling.receipt.receivedQuantity ≤
+        cartQuantityTotal handling.authorization.order.items := by
+  exact ⟨handling.approved, crmApprovedReturnHandling_refund_le_remaining handling,
+    crmApprovedReturnHandling_refund_le_order_total handling,
+    crmApprovedReturnHandling_received_le_order_quantity handling⟩
+
 
 end CommerceTheory

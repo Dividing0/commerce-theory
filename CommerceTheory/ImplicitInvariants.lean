@@ -1,4 +1,4 @@
-import CommerceTheory.EventSourcing
+import CommerceTheory.Logistics
 import CommerceTheory.OpportunityPortfolio
 
 namespace CommerceTheory
@@ -556,5 +556,153 @@ theorem approvedOrderableSupplierQuality_not_suspended
     (supplier : ApprovedOrderableSupplierQuality) :
     supplier.quality.supplier.suspended = false := by
   exact supplier.can_receive_orders.right
+
+/-! ### CRM and logistics joins -/
+
+/-- A converted lead paired with the opportunity created from it. -/
+structure ConvertedLeadOpportunity where
+  lead : Lead
+  opportunity : SalesOpportunity
+  lead_converted : lead.status = LeadStatus.Converted
+  opportunity_source_matches : opportunity.sourceLead = some lead.id
+  account_matches : opportunity.accountId = lead.accountId
+  contact_matches : opportunity.contactId = lead.contactId
+  currency_matches : opportunity.currency = lead.currency
+  opportunity_amount_le_estimate : opportunity.amount ≤ lead.estimatedValue
+
+/-- Converted lead opportunities expose the terminal converted lead status. -/
+theorem convertedLeadOpportunity_status
+    (conversion : ConvertedLeadOpportunity) :
+    conversion.lead.status = LeadStatus.Converted := by
+  exact conversion.lead_converted
+
+/-- Converted lead opportunities keep the opportunity source pointer. -/
+theorem convertedLeadOpportunity_source_matches
+    (conversion : ConvertedLeadOpportunity) :
+    conversion.opportunity.sourceLead = some conversion.lead.id := by
+  exact conversion.opportunity_source_matches
+
+/-- Converted opportunity amounts remain inside the lead estimate. -/
+theorem convertedLeadOpportunity_amount_le_estimate
+    (conversion : ConvertedLeadOpportunity) :
+    conversion.opportunity.amount ≤ conversion.lead.estimatedValue := by
+  exact conversion.opportunity_amount_le_estimate
+
+/-- A customer order associated with a CRM account and contact. -/
+structure CRMOrderContact where
+  account : CRMAccount
+  contact : CRMContact
+  order : Order
+  account_active : crmAccountActive account
+  contact_account_matches : contact.accountId = account.id
+  contact_customer_matches : contact.customerId = account.customer.id
+
+/-- CRM order contacts require an active CRM account. -/
+theorem crmOrderContact_account_active (x : CRMOrderContact) :
+    x.account.status = CRMAccountStatus.Active := by
+  exact x.account_active
+
+/-- CRM order contacts link the contact to the owning account. -/
+theorem crmOrderContact_account_matches (x : CRMOrderContact) :
+    x.contact.accountId = x.account.id := by
+  exact x.contact_account_matches
+
+/-- CRM order contacts link the contact to the account's commerce customer. -/
+theorem crmOrderContact_customer_matches (x : CRMOrderContact) :
+    x.contact.customerId = x.account.customer.id := by
+  exact x.contact_customer_matches
+
+/-- A logistics shipment plan tied to a CRM-associated customer order. -/
+structure ShipmentForCRMOrder where
+  crmOrder : CRMOrderContact
+  plan : LogisticsShipmentPlan
+  order_matches : plan.order = crmOrder.order
+
+/-- Shipments for CRM orders point at the same order id. -/
+theorem shipmentForCRMOrder_order_id_matches
+    (shipment : ShipmentForCRMOrder) :
+    shipment.plan.order.id = shipment.crmOrder.order.id := by
+  rw [shipment.order_matches]
+
+/-- Shipments for CRM orders inherit the carrier weight safety check. -/
+theorem shipmentForCRMOrder_package_weight_safe
+    (shipment : ShipmentForCRMOrder) :
+    shipment.plan.package.weight ≤ shipment.plan.quote.service.maxWeight := by
+  exact shipmentPlan_package_weight_safe shipment.plan
+
+/-- A logistics exception escalated into a CRM support case. -/
+structure LogisticsExceptionSupportCase where
+  exception : LogisticsException
+  shipment : LogisticsShipmentPlan
+  supportCase : SupportCase
+  exception_shipment_matches : exception.shipmentId = shipment.id
+  support_case_order_matches : supportCase.orderId = some shipment.order.id
+  support_case_escalated : supportCase.status = SupportCaseStatus.Escalated
+  exception_raised_before_case_opened : exception.raisedAt ≤ supportCase.openedAt
+
+/-- Escalated logistics exceptions point at the affected shipment. -/
+theorem logisticsExceptionSupportCase_shipment_matches
+    (escalation : LogisticsExceptionSupportCase) :
+    escalation.exception.shipmentId = escalation.shipment.id := by
+  exact escalation.exception_shipment_matches
+
+/-- Escalated logistics support cases point at the affected order. -/
+theorem logisticsExceptionSupportCase_order_matches
+    (escalation : LogisticsExceptionSupportCase) :
+    escalation.supportCase.orderId = some escalation.shipment.order.id := by
+  exact escalation.support_case_order_matches
+
+/-- Escalated logistics exceptions use an escalated CRM support case. -/
+theorem logisticsExceptionSupportCase_status_escalated
+    (escalation : LogisticsExceptionSupportCase) :
+    escalation.supportCase.status = SupportCaseStatus.Escalated := by
+  exact escalation.support_case_escalated
+
+/-- Escalated support cases are not opened before the logistics exception exists. -/
+theorem logisticsExceptionSupportCase_opened_after_exception
+    (escalation : LogisticsExceptionSupportCase) :
+    escalation.exception.raisedAt ≤ escalation.supportCase.openedAt := by
+  exact escalation.exception_raised_before_case_opened
+
+/-- A CRM-approved return authorization tied to physical logistics return handling. -/
+structure CRMApprovedReturnHandling where
+  authorization : ReturnAuthorization
+  receipt : ReturnReceipt
+  approved : returnAuthorizationApproved authorization
+  receipt_matches_authorization : receipt.authorization = authorization
+
+/-- CRM-approved return handling exposes the approved authorization state. -/
+theorem crmApprovedReturnHandling_approved
+    (handling : CRMApprovedReturnHandling) :
+    handling.authorization.status = ReturnAuthorizationStatus.Approved := by
+  exact handling.approved
+
+/-- CRM-approved return handling cannot refund above the ledger's remaining amount. -/
+theorem crmApprovedReturnHandling_refund_le_remaining
+    (handling : CRMApprovedReturnHandling) :
+    handling.receipt.refundIssued ≤ remainingRefundAmount handling.authorization.ledger := by
+  have hReceipt : handling.receipt.refundIssued ≤ handling.authorization.refundAmount := by
+    have h := handling.receipt.refund_le_authorized
+    rw [handling.receipt_matches_authorization] at h
+    exact h
+  exact hReceipt.trans (returnAuthorization_refund_le_remaining handling.authorization)
+
+/-- CRM-approved return handling cannot refund above the original order total. -/
+theorem crmApprovedReturnHandling_refund_le_order_total
+    (handling : CRMApprovedReturnHandling) :
+    handling.receipt.refundIssued ≤ handling.authorization.order.total := by
+  have h := returnReceipt_refund_le_order_total handling.receipt
+  rw [handling.receipt_matches_authorization] at h
+  exact h
+
+/-- CRM-approved return handling cannot receive more units than the original order held. -/
+theorem crmApprovedReturnHandling_received_le_order_quantity
+    (handling : CRMApprovedReturnHandling) :
+    handling.receipt.receivedQuantity ≤ cartQuantityTotal handling.authorization.order.items := by
+  have hReceipt : handling.receipt.receivedQuantity ≤ handling.authorization.quantity := by
+    have h := handling.receipt.received_le_authorized
+    rw [handling.receipt_matches_authorization] at h
+    exact h
+  exact hReceipt.trans handling.authorization.quantity_le_order_quantity
 
 end CommerceTheory

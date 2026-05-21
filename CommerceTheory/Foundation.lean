@@ -81,6 +81,61 @@ structure IdempotencyKey where
   value : Nat
 deriving DecidableEq, Repr
 
+/-- Data shape for `AccountId`; proof fields record invariants when needed. -/
+structure AccountId where
+  value : Nat
+deriving DecidableEq, Repr
+
+/-- Data shape for `ContactId`; proof fields record invariants when needed. -/
+structure ContactId where
+  value : Nat
+deriving DecidableEq, Repr
+
+/-- Data shape for `LeadId`; proof fields record invariants when needed. -/
+structure LeadId where
+  value : Nat
+deriving DecidableEq, Repr
+
+/-- Data shape for `OpportunityId`; proof fields record invariants when needed. -/
+structure OpportunityId where
+  value : Nat
+deriving DecidableEq, Repr
+
+/-- Data shape for `InteractionId`; proof fields record invariants when needed. -/
+structure InteractionId where
+  value : Nat
+deriving DecidableEq, Repr
+
+/-- Data shape for `SegmentId`; proof fields record invariants when needed. -/
+structure SegmentId where
+  value : Nat
+deriving DecidableEq, Repr
+
+/-- Data shape for `SupportCaseId`; proof fields record invariants when needed. -/
+structure SupportCaseId where
+  value : Nat
+deriving DecidableEq, Repr
+
+/-- Data shape for `ShipmentId`; proof fields record invariants when needed. -/
+structure ShipmentId where
+  value : Nat
+deriving DecidableEq, Repr
+
+/-- Data shape for `TrackingEventId`; proof fields record invariants when needed. -/
+structure TrackingEventId where
+  value : Nat
+deriving DecidableEq, Repr
+
+/-- Data shape for `TransferId`; proof fields record invariants when needed. -/
+structure TransferId where
+  value : Nat
+deriving DecidableEq, Repr
+
+/-- Data shape for `ReturnAuthorizationId`; proof fields record invariants when needed. -/
+structure ReturnAuthorizationId where
+  value : Nat
+deriving DecidableEq, Repr
+
 /-- Closed set of cases for `Currency` in the commerce domain model. -/
 inductive Currency where
   | UAH

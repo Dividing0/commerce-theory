@@ -18,7 +18,9 @@ import CommerceTheory.EventLanguage
 import CommerceTheory.EventReplay
 import CommerceTheory.ImplicitInvariants
 import CommerceTheory.PostPurchase
+import CommerceTheory.CRM
 import CommerceTheory.Forecasting
+import CommerceTheory.Logistics
 import CommerceTheory.InventoryAlgorithms
 import CommerceTheory.KeyedTotals
 import CommerceTheory.OpportunityPortfolio
