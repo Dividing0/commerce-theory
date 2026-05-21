@@ -9,6 +9,11 @@ import CommerceTheory.Workflow
 
 namespace CommerceTheory
 
+noncomputable section
+
+local instance instValidationDecidableProp (p : Prop) : Decidable p :=
+  Classical.propDecidable p
+
 /-! ## Executable validators for proof-carrying records -/
 
 /-!
@@ -507,13 +512,13 @@ theorem validateCompareAndSwapReservation_sound
   cases hCas : compareAndSwapReserve? stock quantity expectedVersion with
   | none =>
       simp [validateCompareAndSwapReservation, hCas] at h
-  | some result =>
+  | some _result =>
       simp [validateCompareAndSwapReservation, hCas] at h
       cases h
       exact ⟨compareAndSwapReserve?_success_increases_version
-          stock quantity expectedVersion result hCas,
+          stock quantity expectedVersion next hCas,
         compareAndSwapReserve?_success_preserves_safety
-          stock quantity expectedVersion result hCas⟩
+          stock quantity expectedVersion next hCas⟩
 
 /-- Validate a raw reservation attempt and execute it with CAS semantics. -/
 def validateRawCompareAndSwapReservation (raw : RawReservationAttempt) :
@@ -711,7 +716,8 @@ theorem validateUsableInventoryLot_sound
   unfold validateUsableInventoryLot at h
   by_cases hUsable : lotUsableAt now lot
   · exact hUsable
-  · simp [hUsable] at h
+  · exfalso
+    simpa [hUsable] using h
 
 /-- Validate SKU substitution against available substitute stock. -/
 def validateSkuSubstitution
@@ -2938,5 +2944,7 @@ def validateLogisticsExceptionSupportCase
       Except.error ValidationError.implicitInvariantFailed
   else
     Except.error ValidationError.implicitInvariantFailed
+
+end
 
 end CommerceTheory
