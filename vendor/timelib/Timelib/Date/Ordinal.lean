@@ -136,7 +136,6 @@ theorem le_of_lt (d₁ d₂ : OrdinalDate) : d₁ < d₂ → d₁ <= d₂ := by
 --      | .inr (.inr d_gt) => simp [le_of_lt d_gt]
 --      | .inr (.inl d_eq) => simp [d_eq]
 --  decidableLE := inferInstance
---  compare_eq_compareOfLessAndEq := by sorry
 
 theorem lt_trichotomy (y₁ y₂ : OrdinalDate) : (y₁ < y₂) ∨ y₁ = y₂ ∨ (y₂ < y₁) := by
   simp [lt_def']

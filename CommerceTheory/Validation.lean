@@ -9,11 +9,6 @@ import CommerceTheory.Workflow
 
 namespace CommerceTheory
 
-noncomputable section
-
-local instance instValidationDecidableProp (p : Prop) : Decidable p :=
-  Classical.propDecidable p
-
 /-! ## Executable validators for proof-carrying records -/
 
 /-!
@@ -22,6 +17,322 @@ not Lean evidence.  This module adds executable validators that turn raw records
 into the existing proof-carrying domain structures when their decidable checks
 pass.
 -/
+
+/-! ### Decidable predicate guards -/
+
+/-!
+These instances are intentionally local to the validation boundary. Domain
+modules keep predicates as proof-friendly `Prop`s, while validators get
+constructive decisions for the specific guards they execute.
+-/
+
+local instance instDecidableShippingAvailable
+    (method : ShippingMethod) (weight : Weight) :
+    Decidable (shippingAvailable method weight) := by
+  unfold shippingAvailable
+  infer_instance
+
+local instance instDecidableValidChannelPrice
+    (policy : ChannelPricePolicy) (price : Money) :
+    Decidable (validChannelPrice policy price) := by
+  unfold validChannelPrice
+  infer_instance
+
+local instance instDecidableAllocationKeysDistinct
+    (allocations : List Allocation) :
+    Decidable (allocationKeysDistinct allocations) := by
+  unfold allocationKeysDistinct
+  infer_instance
+
+local instance instDecidableReservationExpiredAt
+    (now : Timestamp) (reservation : TimedReservation) :
+    Decidable (reservationExpiredAt now reservation) := by
+  unfold reservationExpiredAt
+  infer_instance
+
+local instance instDecidableSerialNumbersDistinct
+    (units : List SerializedInventoryUnit) :
+    Decidable (serialNumbersDistinct units) := by
+  unfold serialNumbersDistinct
+  infer_instance
+
+local instance instDecidableLotUsableAt
+    (now : Timestamp) (lot : InventoryLot) :
+    Decidable (lotUsableAt now lot) := by
+  unfold lotUsableAt
+  infer_instance
+
+local instance instDecidableCustomerCanBuyWholesale
+    (customer : Customer) :
+    Decidable (customerCanBuyWholesale customer) := by
+  unfold customerCanBuyWholesale
+  infer_instance
+
+local instance instDecidableSupplierCanReceiveOrders
+    (supplier : DropshipSupplier) :
+    Decidable (supplierCanReceiveOrders supplier) := by
+  unfold supplierCanReceiveOrders
+  infer_instance
+
+local instance instDecidableCompetitorOfferRelevant
+    (offer : CompetitorOffer) (sku : Sku) (currency : Currency) :
+    Decidable (competitorOfferRelevant offer sku currency) := by
+  unfold competitorOfferRelevant
+  infer_instance
+
+local instance instDecidablePriceProfitableForMinProfit
+    (price discount : Money) (costs : DropshipProfitCosts) (minProfit : Money) :
+    Decidable (priceProfitableForMinProfit price discount costs minProfit) := by
+  unfold priceProfitableForMinProfit
+  infer_instance
+
+local instance instDecidableComponentCanFulfillBundles
+    (bundleQty : Quantity) (component : BundleComponent) :
+    Decidable (componentCanFulfillBundles bundleQty component) := by
+  unfold componentCanFulfillBundles
+  infer_instance
+
+local instance instDecidableCertificateValidAt
+    (certificate : TaxExemptionCertificate) (now : Timestamp) :
+    Decidable (certificateValidAt certificate now) := by
+  unfold certificateValidAt
+  infer_instance
+
+local instance instDecidableCanPerform
+    (actor : Role) (action : Action) :
+    Decidable (CanPerform actor action) := by
+  cases actor <;> cases action <;> unfold CanPerform <;> infer_instance
+
+local instance instDecidableCanSendMarketingMessage
+    (status : SubscriptionStatus) :
+    Decidable (canSendMarketingMessage status) := by
+  cases status <;> unfold canSendMarketingMessage <;> infer_instance
+
+local instance instDecidableCanRetarget
+    (consent : ConsentStatus) :
+    Decidable (canRetarget consent) := by
+  unfold canRetarget
+  infer_instance
+
+local instance instDecidableDataProcessingAllowed
+    (permission : DataProcessingPermission) :
+    Decidable (dataProcessingAllowed permission) := by
+  unfold dataProcessingAllowed
+  infer_instance
+
+local instance instDecidableContactCanReceiveMarketing
+    (contact : CRMContact) :
+    Decidable (contactCanReceiveMarketing contact) := by
+  unfold contactCanReceiveMarketing
+  infer_instance
+
+local instance instDecidableOpportunityStageProbabilityAllowed
+    (stage : OpportunityStage) (probability : BasisPoints) :
+    Decidable (opportunityStageProbabilityAllowed stage probability) := by
+  cases stage <;> unfold opportunityStageProbabilityAllowed <;> infer_instance
+
+local instance instDecidableCouponCanBeApplied
+    (coupon : Coupon) (subtotal : Money) (usesBefore : Nat) :
+    Decidable (couponCanBeApplied coupon subtotal usesBefore) := by
+  unfold couponCanBeApplied
+  infer_instance
+
+local instance instDecidableCouponUsesAllowed
+    (policy : FraudPolicy) (uses : Nat) :
+    Decidable (couponUsesAllowed policy uses) := by
+  unfold couponUsesAllowed
+  infer_instance
+
+local instance instDecidableProductActive
+    (product : Product) :
+    Decidable (productActive product) := by
+  unfold productActive
+  infer_instance
+
+local instance instDecidableVariantActive
+    (variant : ProductVariant) :
+    Decidable (variantActive variant) := by
+  unfold variantActive
+  infer_instance
+
+local instance instDecidableFeedLineHasStock
+    (line : SafeProductFeedLine) :
+    Decidable (feedLineHasStock line) := by
+  unfold feedLineHasStock
+  infer_instance
+
+local instance instDecidableDistributorProductActive
+    (product : DistributorProduct) :
+    Decidable (distributorProductActive product) := by
+  unfold distributorProductActive
+  infer_instance
+
+local instance instDecidableDistributorProductCanSource
+    (product : DistributorProduct) (units : Quantity) :
+    Decidable (distributorProductCanSource product units) := by
+  unfold distributorProductCanSource
+  infer_instance
+
+local instance instDecidableListingActive
+    (listing : MarketplaceListing) :
+    Decidable (listingActive listing) := by
+  unfold listingActive
+  infer_instance
+
+local instance instDecidableListingInStock
+    (listing : MarketplaceListing) :
+    Decidable (listingInStock listing) := by
+  unfold listingInStock
+  infer_instance
+
+local instance instDecidableListingCanBeAdvertised
+    (listing : MarketplaceListing) :
+    Decidable (listingCanBeAdvertised listing) := by
+  unfold listingCanBeAdvertised
+  infer_instance
+
+local instance instDecidableCanPlaceWholesaleCreditOrder
+    (account : WholesaleCreditAccount) (orderTotal : Money) :
+    Decidable (canPlaceWholesaleCreditOrder account orderTotal) := by
+  unfold canPlaceWholesaleCreditOrder
+  infer_instance
+
+local instance instDecidablePaymentTermsAllowed
+    (mode : TradeMode) (terms : PaymentTerms) :
+    Decidable (paymentTermsAllowed mode terms) := by
+  cases mode <;> cases terms <;> unfold paymentTermsAllowed <;> infer_instance
+
+local instance instDecidableTrustAllowsAutoRepricing
+    (trust : TrustLevel) :
+    Decidable (trustAllowsAutoRepricing trust) := by
+  cases trust <;> unfold trustAllowsAutoRepricing <;> infer_instance
+
+local instance instDecidablePriceSnapshotFresh
+    (now : Timestamp) (maxAge : Duration) (observedAt : Timestamp) :
+    Decidable (priceSnapshotFresh now maxAge observedAt) := by
+  unfold priceSnapshotFresh
+  infer_instance
+
+local instance instDecidableAdvertisedPriceAllowed
+    (policy : BrandPricingPolicy) (advertisedPrice : Money) :
+    Decidable (advertisedPriceAllowed policy advertisedPrice) := by
+  unfold advertisedPriceAllowed
+  infer_instance
+
+local instance instDecidableFxQuoteFresh
+    (now : Timestamp) (maxAge : Duration) (rate : ExchangeRate) :
+    Decidable (fxQuoteFresh now maxAge rate) := by
+  unfold fxQuoteFresh
+  infer_instance
+
+local instance instDecidableGiftCardValidAt
+    (now : Timestamp) (card : GiftCard) :
+    Decidable (giftCardValidAt now card) := by
+  unfold giftCardValidAt
+  infer_instance
+
+local instance instDecidableConfidenceAllowsAutoReplenish
+    (confidence : Confidence) :
+    Decidable (confidenceAllowsAutoReplenish confidence) := by
+  cases confidence <;> unfold confidenceAllowsAutoReplenish <;> infer_instance
+
+local instance instDecidableDemandForecastActionable
+    (forecast : DemandForecast) :
+    Decidable (demandForecastActionable forecast) := by
+  unfold demandForecastActionable
+  infer_instance
+
+local instance instDecidableOrderEligibleForLogistics
+    (order : Order) :
+    Decidable (orderEligibleForLogistics order) := by
+  unfold orderEligibleForLogistics
+  infer_instance
+
+local instance instDecidableReturnAuthorizationApproved
+    (authorization : ReturnAuthorization) :
+    Decidable (returnAuthorizationApproved authorization) := by
+  unfold returnAuthorizationApproved
+  infer_instance
+
+local instance instDecidableCartContainsSku
+    (sku : Sku) (items : List CartLine) :
+    Decidable (cartContainsSku sku items) := by
+  induction items with
+  | nil =>
+      unfold cartContainsSku
+      infer_instance
+  | cons _line rest ih =>
+      letI : Decidable (cartContainsSku sku rest) := ih
+      unfold cartContainsSku
+      infer_instance
+
+local instance instDecidableAllocationsMatchCartSkus
+    (items : List CartLine) (allocations : List Allocation) :
+    Decidable (allocationsMatchCartSkus items allocations) := by
+  induction allocations with
+  | nil =>
+      unfold allocationsMatchCartSkus
+      infer_instance
+  | cons _allocation rest ih =>
+      letI : Decidable (allocationsMatchCartSkus items rest) := ih
+      unfold allocationsMatchCartSkus
+      infer_instance
+
+local instance instDecidableAllocationsUseWarehouse
+    (warehouse : Warehouse) (allocations : List Allocation) :
+    Decidable (allocationsUseWarehouse warehouse allocations) := by
+  induction allocations with
+  | nil =>
+      unfold allocationsUseWarehouse
+      infer_instance
+  | cons _allocation rest ih =>
+      letI : Decidable (allocationsUseWarehouse warehouse rest) := ih
+      unfold allocationsUseWarehouse
+      infer_instance
+
+local instance instDecidableReturnLinesMatchOrderSkus
+    (items : List CartLine) (lines : List ReturnLine) :
+    Decidable (returnLinesMatchOrderSkus items lines) := by
+  induction lines with
+  | nil =>
+      unfold returnLinesMatchOrderSkus
+      infer_instance
+  | cons _line rest ih =>
+      letI : Decidable (returnLinesMatchOrderSkus items rest) := ih
+      unfold returnLinesMatchOrderSkus
+      infer_instance
+
+local instance instDecidableOpportunitiesUseCurrency
+    (currency : Currency) (opportunities : List SalesOpportunity) :
+    Decidable (opportunitiesUseCurrency currency opportunities) := by
+  induction opportunities with
+  | nil =>
+      unfold opportunitiesUseCurrency
+      infer_instance
+  | cons _opportunity rest ih =>
+      letI : Decidable (opportunitiesUseCurrency currency rest) := ih
+      unfold opportunitiesUseCurrency
+      infer_instance
+
+local instance instDecidableStreamSequencesStrictlyIncreaseFrom :
+    (last : Nat) → (events : List EventEnvelope) →
+      Decidable (streamSequencesStrictlyIncreaseFrom last events) := by
+  intro last events
+  induction events generalizing last with
+  | nil =>
+      unfold streamSequencesStrictlyIncreaseFrom
+      infer_instance
+  | cons event rest ih =>
+      letI : Decidable (streamSequencesStrictlyIncreaseFrom event.sequence rest) :=
+        ih event.sequence
+      unfold streamSequencesStrictlyIncreaseFrom
+      infer_instance
+
+local instance instDecidableStreamSequencesStrictlyIncrease
+    (stream : EventStream) :
+    Decidable (streamSequencesStrictlyIncrease stream) := by
+  unfold streamSequencesStrictlyIncrease
+  infer_instance
 
 /-- Validation failures produced while converting raw data into safe records. -/
 inductive ValidationError where
@@ -1439,6 +1750,18 @@ def bundleComponentsCanFulfillAll
   | component :: rest =>
       componentCanFulfillBundles bundleQty component ∧
         bundleComponentsCanFulfillAll bundleQty rest
+
+local instance instDecidableBundleComponentsCanFulfillAll
+    (bundleQty : Quantity) (components : List BundleComponent) :
+    Decidable (bundleComponentsCanFulfillAll bundleQty components) := by
+  induction components with
+  | nil =>
+      unfold bundleComponentsCanFulfillAll
+      infer_instance
+  | cons _component rest ih =>
+      letI : Decidable (bundleComponentsCanFulfillAll bundleQty rest) := ih
+      unfold bundleComponentsCanFulfillAll
+      infer_instance
 
 /-- The recursive bundle check implies the existing membership-based invariant. -/
 theorem bundleComponentsCanFulfillAll_sound
@@ -2944,7 +3267,5 @@ def validateLogisticsExceptionSupportCase
       Except.error ValidationError.implicitInvariantFailed
   else
     Except.error ValidationError.implicitInvariantFailed
-
-end
 
 end CommerceTheory
