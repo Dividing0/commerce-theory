@@ -426,7 +426,13 @@ theorem expired_personal_data_cannot_be_retained
     ¬ canRetainPersonalData policy now collectedAt := by
   intro hRetain
   have hWithin : withinRetentionWindow policy now collectedAt := hRetain
-  exact (not_lt_of_ge hWithin.right) hExpired.right
+  have hAgeLeWindow :
+      (timestampAge now collectedAt).val ≤ policy.retentionWindow.val := by
+    simpa [Timelib.SignedDuration.le_def] using hWithin.right
+  have hWindowLtAge :
+      policy.retentionWindow.val < (timestampAge now collectedAt).val := by
+    simpa [Timelib.SignedDuration.lt_def] using hExpired.right
+  exact (not_lt_of_ge hAgeLeWindow) hWindowLtAge
 
 /-- Right-to-erasure status for a personal-data subject. -/
 inductive ErasureStatus where
