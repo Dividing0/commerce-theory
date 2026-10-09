@@ -1,4 +1,3 @@
-import Mathlib
 import CommerceTheory.Summary
 
 namespace CommerceTheory

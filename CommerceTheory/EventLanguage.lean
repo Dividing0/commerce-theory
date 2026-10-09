@@ -80,6 +80,13 @@ def orderEventValidator :
     state = OrderEventValidationState.Shipped ∨
       state = OrderEventValidationState.Refunded }
 
+/-- Acceptance is executable without relying on unrelated imported instances. -/
+instance instDecidableOrderEventValidatorAccept (state : OrderEventValidationState) :
+    Decidable (state ∈ orderEventValidator.accept) := by
+  change Decidable
+    (state = OrderEventValidationState.Shipped ∨ state = OrderEventValidationState.Refunded)
+  infer_instance
+
 /-- A normal place/capture/ship word is accepted. -/
 theorem paidShipEventWord_accepted :
     orderEventValidator.mtr orderEventValidator.start

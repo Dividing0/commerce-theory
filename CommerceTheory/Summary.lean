@@ -1,5 +1,6 @@
 import CommerceTheory.EventLanguage
 import CommerceTheory.EventReplay
+import CommerceTheory.OrderEventReplay
 import CommerceTheory.ImplicitInvariants
 import CommerceTheory.InventoryAlgorithms
 import CommerceTheory.KeyedTotals
@@ -1511,14 +1512,33 @@ theorem crm_logistics_projection_commutes (state : ValidSystemState) :
 
 /-- Replaying from a snapshot is equivalent to replaying prefix and suffix together. -/
 theorem snapshot_replay_equivalence
-    (state snapshotState : ValidSystemState)
-    (eventPrefix suffix : List DomainEvent) (lastSequence : Nat)
-    (hPrefix : replayDomainEvents? state eventPrefix = some snapshotState) :
-    replayDomainEvents? state (eventPrefix ++ suffix) =
-      replayFromSnapshot?
-        { state := snapshotState, lastSequence := lastSequence } suffix := by
+    (snapshot next : EventSnapshot) (eventPrefix suffix : List EventEnvelope)
+    (hPrefix : replayFromSnapshot? snapshot eventPrefix = some next) :
+    replayFromSnapshot? snapshot (eventPrefix ++ suffix) =
+      replayFromSnapshot? next suffix := by
   exact replay_from_snapshot_equivalent_to_full_replay
-    state snapshotState eventPrefix suffix lastSequence hPrefix
+    snapshot next eventPrefix suffix hPrefix
+
+/-- Accepted snapshot replay is ordered and records exactly the final sequence. -/
+theorem snapshot_replay_sequence_safety
+    {snapshot after : EventSnapshot} {events : List EventEnvelope}
+    (h : replayFromSnapshot? snapshot events = some after) :
+    streamSequencesStrictlyIncreaseFrom snapshot.lastSequence events ∧
+      snapshot.lastSequence ≤ after.lastSequence ∧
+      after.lastSequence = finalEnvelopeSequence snapshot.lastSequence events := by
+  exact ⟨replaySequencedEvents?_ordered applyDomainEvent? h,
+    replaySequencedEvents?_cursor_monotone applyDomainEvent? h,
+    replaySequencedEvents?_cursor_eq applyDomainEvent? h⟩
+
+/-- Accepted order-aware refunds are authorized by that order's original balance. -/
+theorem order_aware_refund_replay_authority
+    {state after : OrderAwareSystemState} (orderId : OrderId) (amount : Money)
+    (h : applyOrderAwareDomainEvent? state (.RefundIssued orderId amount) = some after) :
+    ∃ ledger : PaymentLedger, state.payments orderId = some ledger ∧
+      ∃ hRefund : canRefund ledger amount,
+        after.payments orderId = some (issueRefund ledger amount hRefund) := by
+  exact applyOrderPaymentEvent?_refund_authorized orderId amount
+    (applyOrderAwareDomainEvent?_payments h)
 
 /-- Successful ledger projection equals the payment/refund event folds. -/
 theorem ledger_projection_matches_payment_refund_folds

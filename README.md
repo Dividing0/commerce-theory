@@ -63,6 +63,9 @@ opportunity selection, CRM, and logistics.
   language for coarse order-event sequence validation.
 - `CommerceTheory/EventReplay.lean`: CSLib bounded step relations for webhook
   and validated system-state replay.
+- `CommerceTheory/OrderEventReplay.lean`: registered order payment ledgers,
+  order-local capture/refund authority, isolation of unrelated order balances,
+  and sequence-checked order-aware snapshot replay.
 - `CommerceTheory/ImplicitInvariants.lean`: cross-module validated wrappers for
   assumptions such as bounded coupons, payment/order matching, event-stream
   cursors, sellable catalog entries, publishable feed lines, experiment traffic,
@@ -131,6 +134,12 @@ Build the project:
 lake build
 ```
 
+Build the library and executable regression examples explicitly:
+
+```bash
+lake build CommerceTheory Tests
+```
+
 Run the executable:
 
 ```bash
@@ -168,6 +177,36 @@ validated structures. Theorems then expose the reusable guarantees, such as:
 - CRM outreach, account/contact linkage, support, retention, shipment, transfer,
   event projection, audit, and return flows expose their identity, permission,
   SLA, capacity, stock, tracking, and refund bounds.
+
+### Order-aware event replay and snapshots
+
+`applyDomainEvent?` and `replayDomainEvents?` project aggregate reporting balances.
+Use `applyOrderAwareDomainEvent?` or `replayOrderAwareDomainEvents?` when payment
+authority must be checked separately for each order. An `OrderPlaced` event
+registers an empty order ledger; capture and refund events require registration,
+and refunds must fit within that order's remaining captured balance. Duplicate
+placement is rejected so it cannot reset a ledger. Updates preserve every other
+order's ledger. Captures record funds received; these APIs do not enforce an
+order-total capture limit or a complete order lifecycle.
+
+`OrderAwareSystemState` contains an aggregate `system` projection and a
+`payments : OrderId → Option PaymentLedger` table.
+`initialOrderAwareSystemState stock` starts a fresh replay with zero aggregate
+balances and no registered orders. When restoring existing data, restore both
+projections together.
+
+`replayFromSnapshot?` now accepts `List EventEnvelope` and returns
+`Option EventSnapshot`, including the updated `lastSequence`. Each envelope must
+have a sequence strictly greater than the current cursor. Sequence gaps are
+allowed; stale, duplicate, or descending sequences are rejected. Failed payload
+validation also rejects replay. Empty suffixes preserve the snapshot. The
+append theorem proves that resuming after a successful prefix gives exactly the
+same state and cursor as replaying the combined envelope list.
+
+`replayOrderAwareFromSnapshot?` applies the same sequence checks to both the
+aggregate and per-order payment projections. Persist the returned snapshot to
+retain the updated cursor and order balances. Snapshot APIs replace the earlier
+payload-only signature; payload-only callers can use `replayDomainEvents?`.
 
 ## CSLib Integration
 

@@ -1,5 +1,6 @@
 import CommerceTheory.Inventory
 import Cslib.Foundations.Data.FinFun
+import Mathlib.Data.Finset.Dedup
 
 namespace CommerceTheory
 

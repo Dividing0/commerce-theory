@@ -520,15 +520,157 @@ theorem crm_and_logistics_projection_commute (state : ValidSystemState) :
       applyLogisticsProjectedEvent (applyCRMProjectedEvent state) := by
   rfl
 
-/-- Snapshot used to resume semantic replay from a previously materialized state. -/
-structure EventSnapshot where
-  state : ValidSystemState
+/-- Materialized replay state and the sequence of its last accepted envelope. -/
+structure ReplaySnapshot (State : Type) where
+  state : State
   lastSequence : Nat
 
-/-- Resume semantic replay from a materialized snapshot. -/
-def replayFromSnapshot? (snapshot : EventSnapshot) (events : List DomainEvent) :
-    Option ValidSystemState :=
-  replayDomainEvents? snapshot.state events
+/-- Replay envelopes atomically, rejecting stale sequences or failed event application.
+Sequence gaps are allowed; every accepted sequence must be strictly newer. -/
+def replaySequencedEvents? {State : Type}
+    (apply : State → DomainEvent → Option State) :
+    ReplaySnapshot State → List EventEnvelope → Option (ReplaySnapshot State)
+  | snapshot, [] => some snapshot
+  | snapshot, envelope :: rest =>
+      if snapshot.lastSequence < envelope.sequence then
+        match apply snapshot.state envelope.event with
+        | some next =>
+            replaySequencedEvents? apply
+              { state := next, lastSequence := envelope.sequence } rest
+        | none => none
+      else
+        none
+
+/-- Successful sequenced replay proves strict ordering of every supplied envelope. -/
+theorem replaySequencedEvents?_ordered {State : Type}
+    (apply : State → DomainEvent → Option State)
+    {snapshot after : ReplaySnapshot State} {events : List EventEnvelope}
+    (h : replaySequencedEvents? apply snapshot events = some after) :
+    streamSequencesStrictlyIncreaseFrom snapshot.lastSequence events := by
+  induction events generalizing snapshot with
+  | nil => trivial
+  | cons envelope rest ih =>
+      simp only [replaySequencedEvents?] at h
+      split at h
+      · rename_i hSequence
+        cases hApply : apply snapshot.state envelope.event with
+        | none => simp [hApply] at h
+        | some next =>
+            simp [hApply] at h
+            exact ⟨hSequence, ih h⟩
+      · simp at h
+
+/-- A stale or duplicate first envelope is rejected before applying its payload. -/
+theorem replaySequencedEvents?_stale_rejected {State : Type}
+    (apply : State → DomainEvent → Option State)
+    (snapshot : ReplaySnapshot State) (envelope : EventEnvelope)
+    (rest : List EventEnvelope) (h : envelope.sequence ≤ snapshot.lastSequence) :
+    replaySequencedEvents? apply snapshot (envelope :: rest) = none := by
+  simp [replaySequencedEvents?, Nat.not_lt.mpr h]
+
+/-- Any ordering violation, including one inside a suffix, rejects the whole replay. -/
+theorem replaySequencedEvents?_unordered_rejected {State : Type}
+    (apply : State → DomainEvent → Option State)
+    (snapshot : ReplaySnapshot State) (events : List EventEnvelope)
+    (h : ¬ streamSequencesStrictlyIncreaseFrom snapshot.lastSequence events) :
+    replaySequencedEvents? apply snapshot events = none := by
+  cases hReplay : replaySequencedEvents? apply snapshot events with
+  | none => rfl
+  | some after => exact False.elim (h (replaySequencedEvents?_ordered apply hReplay))
+
+/-- Successful replay never moves the snapshot cursor backwards. -/
+theorem replaySequencedEvents?_cursor_monotone {State : Type}
+    (apply : State → DomainEvent → Option State)
+    {snapshot after : ReplaySnapshot State} {events : List EventEnvelope}
+    (h : replaySequencedEvents? apply snapshot events = some after) :
+    snapshot.lastSequence ≤ after.lastSequence := by
+  induction events generalizing snapshot with
+  | nil =>
+      simp only [replaySequencedEvents?, Option.some.injEq] at h
+      cases h
+      exact Nat.le_refl _
+  | cons envelope rest ih =>
+      simp only [replaySequencedEvents?] at h
+      split at h
+      · rename_i hSequence
+        cases hApply : apply snapshot.state envelope.event with
+        | none => simp [hApply] at h
+        | some next =>
+            simp [hApply] at h
+            exact (Nat.le_of_lt hSequence).trans (ih h)
+      · simp at h
+
+/-- The sequence at the end of a list, keeping the old cursor for an empty suffix. -/
+def finalEnvelopeSequence : Nat → List EventEnvelope → Nat
+  | last, [] => last
+  | _, envelope :: rest => finalEnvelopeSequence envelope.sequence rest
+
+/-- Successful replay records exactly the last supplied sequence. -/
+theorem replaySequencedEvents?_cursor_eq {State : Type}
+    (apply : State → DomainEvent → Option State)
+    {snapshot after : ReplaySnapshot State} {events : List EventEnvelope}
+    (h : replaySequencedEvents? apply snapshot events = some after) :
+    after.lastSequence = finalEnvelopeSequence snapshot.lastSequence events := by
+  induction events generalizing snapshot with
+  | nil =>
+      simp only [replaySequencedEvents?, Option.some.injEq] at h
+      cases h
+      rfl
+  | cons envelope rest ih =>
+      simp only [replaySequencedEvents?] at h
+      split at h
+      · cases hApply : apply snapshot.state envelope.event with
+        | none => simp [hApply] at h
+        | some next =>
+            simp [hApply] at h
+            exact ih h
+      · simp at h
+
+/-- Splitting a sequenced replay preserves both materialized state and cursor. -/
+theorem replaySequencedEvents?_append {State : Type}
+    (apply : State → DomainEvent → Option State)
+    (snapshot : ReplaySnapshot State) (eventPrefix suffix : List EventEnvelope) :
+    replaySequencedEvents? apply snapshot (eventPrefix ++ suffix) =
+      match replaySequencedEvents? apply snapshot eventPrefix with
+      | some next => replaySequencedEvents? apply next suffix
+      | none => none := by
+  induction eventPrefix generalizing snapshot with
+  | nil => rfl
+  | cons envelope rest ih =>
+      by_cases hSequence : snapshot.lastSequence < envelope.sequence
+      · cases hApply : apply snapshot.state envelope.event with
+        | none => simp [replaySequencedEvents?, hSequence, hApply]
+        | some next =>
+            simpa [replaySequencedEvents?, hSequence, hApply] using
+              ih { state := next, lastSequence := envelope.sequence }
+      · simp [replaySequencedEvents?, hSequence]
+
+/-- Snapshot for the aggregate reporting projection. -/
+abbrev EventSnapshot := ReplaySnapshot ValidSystemState
+
+/-- Resume aggregate replay with sequence validation and an updated snapshot. -/
+def replayFromSnapshot? (snapshot : EventSnapshot) (events : List EventEnvelope) :
+    Option EventSnapshot :=
+  replaySequencedEvents? applyDomainEvent? snapshot events
+
+/-- On an ordered suffix, envelope replay computes precisely the payload projection.
+The ordering guard adds no extra rejection once strict ordering is established. -/
+theorem replayFromSnapshot?_state_of_ordered
+    (snapshot : EventSnapshot) (events : List EventEnvelope)
+    (hOrdered : streamSequencesStrictlyIncreaseFrom snapshot.lastSequence events) :
+    (replayFromSnapshot? snapshot events).map (fun next => next.state) =
+      replayDomainEvents? snapshot.state (events.map (fun envelope => envelope.event)) := by
+  induction events generalizing snapshot with
+  | nil => rfl
+  | cons envelope rest ih =>
+      cases hApply : applyDomainEvent? snapshot.state envelope.event with
+      | none =>
+          simp [replayFromSnapshot?, replaySequencedEvents?, replayDomainEvents?,
+            hOrdered.left, hApply]
+      | some next =>
+          simpa [replayFromSnapshot?, replaySequencedEvents?, replayDomainEvents?,
+            hOrdered.left, hApply] using
+            ih { state := next, lastSequence := envelope.sequence } hOrdered.right
 
 /-- Replaying an appended suffix from a replayed prefix is equivalent to full replay. -/
 theorem replayDomainEvents?_append
@@ -549,14 +691,12 @@ theorem replayDomainEvents?_append
 
 /-- Replay from a snapshot is equivalent to replaying prefix then suffix. -/
 theorem replay_from_snapshot_equivalent_to_full_replay
-    (state snapshotState : ValidSystemState)
-    (eventPrefix suffix : List DomainEvent) (lastSequence : Nat)
-    (hPrefix : replayDomainEvents? state eventPrefix = some snapshotState) :
-    replayDomainEvents? state (eventPrefix ++ suffix) =
-      replayFromSnapshot?
-        { state := snapshotState, lastSequence := lastSequence } suffix := by
-  rw [replayDomainEvents?_append, hPrefix]
-  rfl
+    (snapshot next : EventSnapshot) (eventPrefix suffix : List EventEnvelope)
+    (hPrefix : replayFromSnapshot? snapshot eventPrefix = some next) :
+    replayFromSnapshot? snapshot (eventPrefix ++ suffix) =
+      replayFromSnapshot? next suffix := by
+  unfold replayFromSnapshot? at *
+  rw [replaySequencedEvents?_append, hPrefix]
 
 /-! ### Ledger projection correctness -/
 

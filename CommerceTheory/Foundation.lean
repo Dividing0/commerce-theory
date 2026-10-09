@@ -1,4 +1,6 @@
-import Mathlib
+import Mathlib.Data.Int.Basic
+import Mathlib.Data.List.Basic
+import Mathlib.Tactic.NormNum
 import Timelib
 
 namespace CommerceTheory
