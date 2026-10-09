@@ -97,7 +97,8 @@ def toYmdsLeap (dt : NaiveDateTime siPow) (isLeap : Bool) : (Ymd × SignedDurati
     let t := dt.val % (SignedDuration.oneDay (siPow_le := dt.isLe) : SignedDuration siPow).val
     (d.toYmd, ⟨t⟩)
 
-instance instInhabited (p : Int) (isLe : p <= 0 := by smesh) : Inhabited (NaiveDateTime p) where
+/-- Not an instance: typeclass synthesis cannot discharge the `p ≤ 0` auto-param. -/
+@[reducible] def instInhabited (p : Int) (isLe : p <= 0 := by smesh) : Inhabited (NaiveDateTime p) where
   default := ⟨Inhabited.default, isLe⟩
 
 def dayOfWeek (dt : NaiveDateTime siPow) : Int :=
@@ -281,7 +282,7 @@ theorem min_eq_iff {l r : NaiveDateTime siPow} : (Min.min l r = l) ↔ l ≤ r :
 def dateEq : (NaiveDateTime siPow) → (NaiveDateTime siPow) → Prop
 | n₁, n₂ => n₁.toScalarDate = n₂.toScalarDate
 
-def dateEq.Equivalence : Equivalence (@dateEq siPow) := {
+theorem dateEq.Equivalence : Equivalence (@dateEq siPow) := {
   refl := fun _ => rfl
   symm := fun h => h.symm
   trans := fun h h' => Eq.trans h h'

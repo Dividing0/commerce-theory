@@ -285,8 +285,8 @@ instance instDecidableLTHet {p1 p2 : Int} (d1 : SignedDuration p1) (d2 : SignedD
 
 end SignedDuration
 
-theorem toString_IntNat_eq (x : Nat) : ToString.toString (↑x : Int) = ToString.toString x := by
-  simp [ToString.toString]
+theorem toString_IntNat_eq (x : Nat) : ToString.toString (↑x : Int) = ToString.toString x :=
+  rfl
 
 def toSecondsString {siPow : Int} (d : SignedDuration siPow) : String :=
   if _ : siPow ≥ 0

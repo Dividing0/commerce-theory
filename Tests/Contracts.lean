@@ -9,7 +9,7 @@ def contractStock : StockState :=
     reserved := 3
     reserved_le_total := by norm_num }
 
-def contractCanReserveTwo : canReserve contractStock 2 := by
+theorem contractCanReserveTwo : canReserve contractStock 2 := by
   decide
 
 def contractReservedStock : StockState :=

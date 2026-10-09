@@ -164,7 +164,7 @@ instance orderStatusLTS_deterministic : orderStatusLTS.Deterministic where
 theorem order_trace_equivalence_is_simulation :
     Cslib.LTS.IsHomSimulation orderStatusLTS
       (Cslib.LTS.HomTraceEq orderStatusLTS) := by
-  exact Cslib.LTS.TraceEq.deterministic_isSimulation
+  exact Cslib.LTS.Deterministic.isSimulation_traceEq
 
 /-- Cancelled orders have no outgoing labelled transitions. -/
 theorem cancelled_order_has_no_lts_outgoing

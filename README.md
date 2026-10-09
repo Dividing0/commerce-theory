@@ -9,12 +9,12 @@ opportunity selection, CRM, and logistics.
 
 ## Toolchain
 
-- Lean: `leanprover/lean4:v4.29.1`
+- Lean: `leanprover/lean4:v4.34.1`
 - Lake package: `commerce-theory`
 - Dependencies:
-  - `leanprover-community/mathlib`, pinned to `v4.29.1`
-  - `leanprover/cslib`, pinned to `v4.29.0`
-  - `ammkrn/timelib`, vendored at `vendor/timelib` with a Lean `v4.29.1`
+  - `leanprover-community/mathlib`, pinned to `v4.34.1`
+  - `leanprover/cslib`, pinned to `v4.34.1`
+  - `ammkrn/timelib`, vendored at `vendor/timelib` with a Lean `v4.34.1`
     compatibility patch for the upstream `2c69e4a597a99d1ce748dea67af430db20ca0ea8`
     source.
 

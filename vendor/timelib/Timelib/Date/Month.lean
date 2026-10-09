@@ -292,8 +292,7 @@ theorem lastDayOf_january_eq (y : Year) : january.lastDayOf y = 31 := by
   simp [lastDayOf]
 
 @[simp]
-theorem numDays_january_eq (y : Year) : january.numDays y = 31 := by
-  simp
+theorem numDays_january_eq (y : Year) : january.numDays y = 31 := rfl
 
 theorem okJanuary (y : Year) : (lastDayOf y january) + 1 = (firstDayOf y february) := by
   simp

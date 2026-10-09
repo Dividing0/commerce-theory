@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Upgraded to Lean `v4.34.1` with Mathlib and CSLib `v4.34.1`, adapting to the
+  CSLib `FinFun` module split and the `Deterministic.isSimulation_traceEq` rename.
+- Patched vendored timelib for Lean `v4.34.1`; `NaiveDateTime.instInhabited` is now a
+  plain definition because typeclass synthesis cannot discharge its auto-param.
+- Replaced `native_decide` in event-language rejection theorems with kernel-checked proofs.
 - Added order-aware payment replay with explicit registration, per-order refund
   authority, duplicate-placement rejection, and isolation of unrelated balances.
 - Changed snapshot replay to accept event envelopes and return an updated

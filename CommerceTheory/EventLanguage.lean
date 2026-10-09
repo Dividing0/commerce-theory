@@ -29,7 +29,12 @@ inductive OrderEventValidationState where
   | Refunded
   | Shipped
   | Invalid
-deriving DecidableEq, Repr, Fintype
+deriving DecidableEq, Repr
+
+instance : Fintype OrderEventValidationState :=
+  Fintype.ofList
+    [ .Start, .Placed, .Captured, .Refunded, .Shipped, .Invalid ]
+    (by intro state; cases state <;> simp)
 
 /-- Forget event payloads and keep only the lifecycle symbol. -/
 def domainEventSymbol : DomainEvent → OrderEventSymbol
