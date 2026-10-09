@@ -106,14 +106,15 @@ theorem applyOrderPaymentEvent?_refund_authorized
     ∃ ledger : PaymentLedger, payments orderId = some ledger ∧
       ∃ hRefund : canRefund ledger amount,
         after orderId = some (issueRefund ledger amount hRefund) := by
-  cases hLedger : payments orderId with
-  | none => simp [applyOrderPaymentEvent?, hLedger] at hApply
-  | some ledger =>
-      by_cases hRefund : canRefund ledger amount
-      · simp [applyOrderPaymentEvent?, hLedger, hRefund] at hApply
-        cases hApply
-        exact ⟨ledger, rfl, hRefund, setOrderPaymentLedger_same _ _ _⟩
-      · simp [applyOrderPaymentEvent?, hLedger, hRefund] at hApply
+  simp only [applyOrderPaymentEvent?] at hApply
+  split at hApply
+  · cases hApply
+  · rename_i ledger hLedger
+    split at hApply
+    · rename_i hRefund
+      cases hApply
+      exact ⟨ledger, hLedger, hRefund, setOrderPaymentLedger_same _ _ _⟩
+    · cases hApply
 
 /-- A payment event's order identity, or `none` for unrelated projections. -/
 def paymentEventOrderId : DomainEvent → Option OrderId
@@ -128,34 +129,13 @@ theorem applyOrderPaymentEvent?_other_order
     (hOther : paymentEventOrderId event ≠ some other)
     (hApply : applyOrderPaymentEvent? payments event = some after) :
     after other = payments other := by
-  cases event <;> simp only [applyOrderPaymentEvent?] at hApply
-  all_goals try { cases Option.some.inj hApply; rfl }
-  case OrderPlaced orderId total =>
-    have hNe : other ≠ orderId := by simpa [paymentEventOrderId, eq_comm] using hOther
-    cases hLedger : payments orderId with
-    | some ledger => simp [hLedger] at hApply
-    | none =>
-        simp [hLedger] at hApply
-        cases hApply
-        exact setOrderPaymentLedger_other _ _ _ _ hNe
-  case PaymentCaptured orderId amount =>
-    have hNe : other ≠ orderId := by simpa [paymentEventOrderId, eq_comm] using hOther
-    cases hLedger : payments orderId with
-    | none => simp [hLedger] at hApply
-    | some ledger =>
-        simp [hLedger] at hApply
-        cases hApply
-        exact setOrderPaymentLedger_other _ _ _ _ hNe
-  case RefundIssued orderId amount =>
-    have hNe : other ≠ orderId := by simpa [paymentEventOrderId, eq_comm] using hOther
-    cases hLedger : payments orderId with
-    | none => simp [hLedger] at hApply
-    | some ledger =>
-        by_cases hRefund : canRefund ledger amount
-        · simp [hLedger, hRefund] at hApply
-          cases hApply
-          exact setOrderPaymentLedger_other _ _ _ _ hNe
-        · simp [hLedger, hRefund] at hApply
+  -- Every accepted branch either returns `payments` or updates the event's own order.
+  cases event <;> simp only [applyOrderPaymentEvent?] at hApply <;>
+    simp only [paymentEventOrderId, ne_eq, Option.some.injEq] at hOther <;>
+    repeat' (first | split at hApply | (cases hApply))
+  all_goals first
+    | rfl
+    | exact setOrderPaymentLedger_other _ _ _ _ (Ne.symm hOther)
 
 /-- Aggregate reporting state together with payment authority for each order. -/
 structure OrderAwareSystemState where
@@ -200,23 +180,18 @@ theorem applyOrderAwareDomainEvent?_payments
     {state after : OrderAwareSystemState} {event : DomainEvent}
     (h : applyOrderAwareDomainEvent? state event = some after) :
     applyOrderPaymentEvent? state.payments event = some after.payments := by
-  cases hPayments : applyOrderPaymentEvent? state.payments event with
-  | none => simp [applyOrderAwareDomainEvent?, hPayments] at h
-  | some payments =>
-      cases hSystem : applyDomainEvent? state.system event with
-      | none => simp [applyOrderAwareDomainEvent?, hPayments, hSystem] at h
-      | some system =>
-          simp [applyOrderAwareDomainEvent?, hPayments, hSystem] at h
-          cases h
-          rfl
+  simp only [applyOrderAwareDomainEvent?, Option.bind_eq_bind, Option.bind_eq_some_iff,
+    Option.some.injEq] at h
+  obtain ⟨payments, hPayments, system, -, rfl⟩ := h
+  exact hPayments
 
 /-- An unrelated order is unchanged by the complete system update. -/
 theorem applyOrderAwareDomainEvent?_other_order
     {state after : OrderAwareSystemState} {event : DomainEvent} (other : OrderId)
     (hOther : paymentEventOrderId event ≠ some other)
     (hApply : applyOrderAwareDomainEvent? state event = some after) :
-    after.payments other = state.payments other := by
-  exact applyOrderPaymentEvent?_other_order other hOther
+    after.payments other = state.payments other :=
+  applyOrderPaymentEvent?_other_order other hOther
     (applyOrderAwareDomainEvent?_payments hApply)
 
 /-- Replaying any list of events for other orders preserves this order's balance. -/
@@ -226,18 +201,14 @@ theorem replayOrderAwareDomainEvents?_other_order
     (hReplay : replayOrderAwareDomainEvents? state events = some after) :
     after.payments other = state.payments other := by
   induction events generalizing state with
-  | nil =>
-      simp [replayOrderAwareDomainEvents?] at hReplay
-      cases hReplay
-      rfl
+  | nil => cases hReplay; rfl
   | cons event rest ih =>
-      cases hApply : applyOrderAwareDomainEvent? state event with
-      | none => simp [replayOrderAwareDomainEvents?, hApply] at hReplay
-      | some next =>
-          simp only [replayOrderAwareDomainEvents?, hApply] at hReplay
-          exact (ih (fun e he => hOther e (List.mem_cons_of_mem event he)) hReplay).trans
-            (applyOrderAwareDomainEvent?_other_order other
-              (hOther event (List.mem_cons_self)) hApply)
+      simp only [replayOrderAwareDomainEvents?] at hReplay
+      split at hReplay
+      · rename_i next hApply
+        exact (ih (fun e he => hOther e (List.mem_cons_of_mem event he)) hReplay).trans
+          (applyOrderAwareDomainEvent?_other_order other (hOther event List.mem_cons_self) hApply)
+      · cases hReplay
 
 /-- Order-aware replay snapshots retain both projections and the accepted cursor. -/
 abbrev OrderAwareEventSnapshot := ReplaySnapshot OrderAwareSystemState

@@ -122,14 +122,14 @@ theorem refundBeforeCapture_rejected :
     orderEventValidator.mtr orderEventValidator.start
       [OrderEventSymbol.OrderPlaced, OrderEventSymbol.RefundIssued] =
         OrderEventValidationState.Invalid := by
-  native_decide
+  simp [orderEventValidator, orderEventValidationStep, Cslib.FLTS.mtr]
 
 /-- Shipment before capture is rejected by the automaton. -/
 theorem shipBeforeCapture_rejected :
     orderEventValidator.mtr orderEventValidator.start
       [OrderEventSymbol.OrderPlaced, OrderEventSymbol.OrderShipped] =
         OrderEventValidationState.Invalid := by
-  native_decide
+  simp [orderEventValidator, orderEventValidationStep, Cslib.FLTS.mtr]
 
 /-- The language accepted by the validator is regular by CSLib's DFA characterization. -/
 theorem orderEventValidator_language_regular :
